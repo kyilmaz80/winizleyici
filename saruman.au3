@@ -12,10 +12,9 @@
 ; author: korayy
 ; date:   191112
 ; desc:   work logger
-; version: 1.1
+; version: 1.2
 
 Const $POLL_TIME_MS = 1000
-; _CaptureMouseClicks degiskenler
 ; _CaptureWindows degiskenler
 Global $sLastActiveWin = ""
 Global $g_tStruct = DllStructCreate($tagPOINT)
@@ -26,7 +25,6 @@ Global $tFinish2 = 0
 Global $sLastPIDName = ""
 Global Const $BLACK_LIST_WINS = "Program Manager|"
 Global Const $LOGFILE_PATH = @WorkingDir & "\worklog.txt"
-
 
 ; thread-like fonksiyonları calistir
 AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
@@ -52,10 +50,14 @@ Func AppendToLogFile($filePath, $data)
    FileClose($hFileOpen)
 EndFunc
 
+; normalize icin dosyadaki son satirla veriyi karsilastirir.
 Func isLastLineSame($filePath, $data)
    Local $lastLine = _ReadFile($filePath,$FO_READ, 1,-1)
-   ConsoleWrite("Last Line: " & $lastLine &  @CRLF )
-   ConsoleWrite("Data: " & $data  &  @CRLF)
+   If StringLen($lastLine) = 0 Then
+	  Return False
+   EndIf
+   ; ConsoleWrite("Last Line: " & $lastLine &  @CRLF )
+   ; ConsoleWrite("Data: " & $data  &  @CRLF)
    $sArrayLastLine = StringSplit($lastLine, ";")
    $sArrayData =  StringSplit($data, ";")
    return not StringCompare($sArrayLastLine[2], $sArrayData[2])
@@ -67,6 +69,7 @@ Func NormalizeLastLine($filePath, $data)
    Local $sArrayData
    Local $aRecords
    Local $sFileRead
+   Local $str
 
    $sFileRead = _ReadFile($filePath,$FO_READ, 1, -1)
    $sArrayLastLine = StringSplit($sFileRead, ";")
@@ -77,11 +80,21 @@ Func NormalizeLastLine($filePath, $data)
 
    $aRecords = FileReadToArray($filePath)
    _ArrayPop($aRecords)
-   _ArrayAdd($aRecords, $sArrayData[1] & ";" & $sArrayLastLine2Arr[1] & "," & $sArrayLastLine2Arr[2]  & "," & $sArrayLastLine2Arr[3])
+;~    _ArrayAdd($aRecords, $sArrayData[1] & ";" & $sArrayLastLine2Arr[1] & "," & $sArrayLastLine2Arr[2]  & "," & $sArrayLastLine2Arr[3])
+   $str = $sArrayData[1]
+
+   For $i=1 to UBound($sArrayLastLine2Arr) - 1
+	  If $i = 1 Then
+		 $str = $str & ";" & $sArrayLastLine2Arr[$i]
+	  Else
+		 $str = $str & "," & $sArrayLastLine2Arr[$i]
+	  EndIf
+   Next
+   ConsoleWrite("STR: " & $str & @CRLF)
+    _ArrayAdd($aRecords,$str)
    ConsoleWrite("overwriting with normalized data..." & $aRecords & @CRLF)
    _FileWriteFromArray($filePath, $aRecords)
 EndFunc
-
 
 ; primitif dosya okur ve icerigini doner
 Func _ReadFile($sFilePath, $FILE_MODE=$FO_READ, $bReadLine=0, $line=0)
@@ -103,6 +116,15 @@ Func _ReadFile($sFilePath, $FILE_MODE=$FO_READ, $bReadLine=0, $line=0)
    return $sFileRead
 EndFunc
 
+; windows lock kontrolu
+Func isWinLocked()
+   If ProcessExists("LogonUI.exe") Then
+	  Return True
+   Else
+	  Return False
+   EndIf
+EndFunc
+
 ; yyyy-mm-dd hh:mm:ss formatinda veya epoch formatinda guncel tarih zaman doner
 Func _GetDatetime($bTimestamp = False)
    $timestamp = _DateDiff('s', "1970/01/01 00:00:00", _NowCalc())
@@ -120,6 +142,19 @@ Func _CaptureWindows()
    Local $line = ""
    ConsoleWrite("Entering _CaptureWindows" & @CRLF)
    ; butun BLACK_LIST_WINS deki pencerelerden biriyse bakilmamasi
+
+   If isWinLocked() Then
+	  ConsoleWrite("Windows Locked! Idle mode....")
+	  $idleStart = _GetDatetime()
+	  $line = $idleStart & ";" & @ComputerName & "," & "IDLE**"
+	  If isLastLineSame($LOGFILE_PATH, $line) Then
+		 NormalizeLastLine($LOGFILE_PATH, $line)
+	  Else
+		 AppendToLogFile($LOGFILE_PATH, $line)
+	  EndIf
+	  Return
+   EndIf
+
    For $i = 1 To $activeWinList[0][0]
 	  Local $sArray = StringSplit($BLACK_LIST_WINS, "|", $STR_ENTIRESPLIT)
 	  If _ArraySearch( $sArray, $activeWinList[$i][0] ) <> -1 Then
