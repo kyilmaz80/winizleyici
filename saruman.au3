@@ -5,41 +5,41 @@
 #include <Array.au3>
 #include <WinAPIFiles.au3>
 #include <WinAPISysWin.au3>
+#include <Process.au3>
+#include <File.au3>
+
 
 ; author: korayy
-; date:   191106
+; date:   191112
 ; desc:   work logger
-; version: 1.0
+; version: 1.1
 
 Const $POLL_TIME_MS = 1000
-Const $CLICK_POLL_TIME_MS = 150
 ; _CaptureMouseClicks degiskenler
-Global $click_timer = 0
 ; _CaptureWindows degiskenler
-Global $lastActiveWin = ""
+Global $sLastActiveWin = ""
 Global $g_tStruct = DllStructCreate($tagPOINT)
 Global $activeWinHnd = ""
-Global $lastActiveWinHnd = ""
+Global $sLastActiveWinHnd = ""
 Global $bWindowChild = 0
 Global $tFinish2 = 0
+Global $sLastPIDName = ""
 Global Const $BLACK_LIST_WINS = "Program Manager|"
 Global Const $LOGFILE_PATH = @WorkingDir & "\worklog.txt"
-Global $winActivityDict = ObjCreate('Scripting.Dictionary')
 
 
 ; thread-like fonksiyonları calistir
 AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
-AdlibRegister("_CaptureMouseClicks", $CLICK_POLL_TIME_MS)
 
 ; busy wait ana program
 Func _Main()
    While 1
-	  Sleep(1000)
+	  Sleep(500)
    Wend
 EndFunc
 
 ; kullanici hareketlerini dosyaya yazar
-Func AppendToLogFile($filePath, $hostName, $windowName, $endTime)
+Func AppendToLogFile($filePath, $data)
    Local $hFileOpen = FileOpen($filePath, $FO_APPEND)
    If $hFileOpen = -1 Then
 	  MsgBox($MB_SYSTEMMODAL, "", "Dosyaya yazma islemi yapilamadi!")
@@ -47,9 +47,39 @@ Func AppendToLogFile($filePath, $hostName, $windowName, $endTime)
    EndIf
 
    ; Write data to the file using the handle returned by FileOpen.
-   FileWriteLine($hFileOpen, $endTime & ": " & $hostName & ";" & $windowName & " " & @CRLF)
+   FileWriteLine($hFileOpen, $data)
    ; Close the handle returned by FileOpen.
    FileClose($hFileOpen)
+EndFunc
+
+Func isLastLineSame($filePath, $data)
+   Local $lastLine = _ReadFile($filePath,$FO_READ, 1,-1)
+   ConsoleWrite("Last Line: " & $lastLine &  @CRLF )
+   ConsoleWrite("Data: " & $data  &  @CRLF)
+   $sArrayLastLine = StringSplit($lastLine, ";")
+   $sArrayData =  StringSplit($data, ";")
+   return not StringCompare($sArrayLastLine[2], $sArrayData[2])
+EndFunc
+
+; kullanici hareketlerini dosyaya yazar
+Func NormalizeLastLine($filePath, $data)
+   Local $sArrayLastLine
+   Local $sArrayData
+   Local $aRecords
+   Local $sFileRead
+
+   $sFileRead = _ReadFile($filePath,$FO_READ, 1, -1)
+   $sArrayLastLine = StringSplit($sFileRead, ";")
+   $sArrayData =  StringSplit($data, ";")
+
+   $sArrayLastLine2 = $sArrayLastLine[2]
+   $sArrayLastLine2Arr = StringSplit($sArrayLastLine2, ",")
+
+   $aRecords = FileReadToArray($filePath)
+   _ArrayPop($aRecords)
+   _ArrayAdd($aRecords, $sArrayData[1] & ";" & $sArrayLastLine2Arr[1] & "," & $sArrayLastLine2Arr[2]  & "," & $sArrayLastLine2Arr[3])
+   ConsoleWrite("overwriting with normalized data..." & $aRecords & @CRLF)
+   _FileWriteFromArray($filePath, $aRecords)
 EndFunc
 
 
@@ -87,6 +117,7 @@ EndFunc
 ;~ aktif pencere yakalayici
 Func _CaptureWindows()
    Local $activeWinList = WinList()
+   Local $line = ""
    ConsoleWrite("Entering _CaptureWindows" & @CRLF)
    ; butun BLACK_LIST_WINS deki pencerelerden biriyse bakilmamasi
    For $i = 1 To $activeWinList[0][0]
@@ -99,87 +130,62 @@ Func _CaptureWindows()
 	  ; TODO mouse click count add parent of windows to Log
 
 	  If $activeWinList[$i][0] <> "" And BitAND(WinGetState($activeWinList[$i][1]), $WIN_STATE_ACTIVE) Then
-		 Local $curActiveWin = $activeWinList[$i][0]
+		 Local $sCurrentActiveWin = $activeWinList[$i][0]
 		 $activeWinHnd = $activeWinList[$i][1]
+		 Local $iPID = WinGetProcess($activeWinHnd)
+		 Local $sPIDName = _ProcessGetName($iPID)
 		 ; ilk durum
-		 If $lastActiveWin == "" Then
+		 If $sLastActiveWin == "" Then
 			Global $tStart = _GetDatetime()
-			ConsoleWrite($tStart & ","  &  $activeWinHnd & ";"& $curActiveWin & " yeni acildi " & @CRLF )
-;~ 			AppendToLogFile($LOGFILE_PATH, @ComputerName, $curActiveWin & " " & $activeWinHnd, $tStart)
-			AppendToLogFile($LOGFILE_PATH, @ComputerName, "START**", $tStart)
+			ConsoleWrite($tStart & ","  &  $activeWinHnd & ","& $sCurrentActiveWin & " yeni acildi " & @CRLF )
+;~ 			AppendToLogFile($LOGFILE_PATH, @ComputerName, $sCurrentActiveWin & " " & $activeWinHnd, $tStart)
+			$line = $tStart & ";" & @ComputerName & "," & "START**"
+			AppendToLogFile($LOGFILE_PATH, $line)
 		 ; pencere degisirse
-		 ElseIf $lastActiveWin <> "" And $lastActiveWin <> $curActiveWin Then
+		 ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
 			Global $tFinish = _GetDatetime()
-			ConsoleWrite($tFinish2 & ","  & $tFinish & ","  & " -> " & $lastActiveWin & " bitti" & @CRLF )
-			ConsoleWrite(_GetDatetime() & ","  & $activeWinHnd & " " &  $lastActiveWin & " -> " & $curActiveWin & @CRLF )
-			AppendToLogFile($LOGFILE_PATH, @ComputerName, $lastActiveWin & ";" & $lastActiveWinHnd, $tFinish)
-;~ 			AppendToLogFile($LOGFILE_PATH, @ComputerName, $curActiveWin & ";" & $activeWinHnd, $tFinish)
+			ConsoleWrite($tFinish2 & ","  & $tFinish & ","  & " -> " & $sLastActiveWin & " bitti" & @CRLF )
+			ConsoleWrite(_GetDatetime() & ","  & $activeWinHnd & " " &  $sLastActiveWin & " -> " & $sCurrentActiveWin & @CRLF )
+			$line =  $tFinish & ";" & @ComputerName & "," & $sLastPIDName  & "," & $sLastActiveWin
+;~ 			AppendToLogFile($LOGFILE_PATH, $line)
+			If isLastLineSame($LOGFILE_PATH, $line) Then
+			   NormalizeLastLine($LOGFILE_PATH, $line)
+			Else
+			   AppendToLogFile($LOGFILE_PATH, $line)
+			EndIf
+;~ 			AppendToLogFile($LOGFILE_PATH, @ComputerName, $sCurrentActiveWin & ";" & $activeWinHnd, $tFinish)
 		 ; pencere ayni ise
 		 Else
 			$tFinish2 = _GetDatetime()
-			ConsoleWrite($tFinish2 & "," & $activeWinHnd & " "  & $lastActiveWin & " -> " & $curActiveWin & " aynen devam" & @CRLF )
+			ConsoleWrite($tFinish2 & "," & $sPIDName  & ";" & $activeWinHnd & " "  & $sLastActiveWin & " -> " & $sCurrentActiveWin & " aynen devam" & @CRLF )
 			; Mouse events
-			Local $key = String($activeWinHnd)
-			If $winActivityDict.count <> 0 and $winActivityDict.exists($key) Then
-			   ConsoleWrite($activeWinHnd  & " penceresinde " & $winActivityDict.Item($key) & " olayi..." & @CRLF)
-			   AppendToLogFile($LOGFILE_PATH, @ComputerName, $curActiveWin & ";" & $activeWinHnd & ";" & $winActivityDict.Item($key), $tFinish2)
+			;Local $key = String($activeWinHnd)
+			$iPID = WinGetProcess($activeWinHnd)
+			$sPIDName = _ProcessGetName($iPID)
+			$line = $tFinish2 & ";" & @ComputerName & "," & $sPIDName  & "," & $sCurrentActiveWin
+
+			If isLastLineSame($LOGFILE_PATH, $line) Then
+			   NormalizeLastLine($LOGFILE_PATH, $line)
 			Else
-			   AppendToLogFile($LOGFILE_PATH, @ComputerName, $curActiveWin & ";" & $activeWinHnd)
+			   AppendToLogFile($LOGFILE_PATH, $line)
 			EndIf
+;~ 			If _isWinNotIdle($activeWinHnd) Then
+;~ 			   ConsoleWrite($activeWinHnd  & " penceresinde " & $winActivityDict.Item($key) & " olayi..." & @CRLF)
+;~ 			   $line = $tFinish2 & ";" & @ComputerName & ";" & $sPIDName  & ";" & $sCurrentActiveWin  & ";" & $winActivityDict.Item($key)
+;~ 			   AppendToLogFile($LOGFILE_PATH, $line)
+;~ 			Else
+;~ 			   $line = $tFinish2 & ";" & @ComputerName & ";" & $sPIDName  & ";" & $sCurrentActiveWin & ";idle"
+;~ 			   AppendToLogFile($LOGFILE_PATH, $line)
+;~ 			EndIf
+
 			; TODO: normalize etmek gerek! Pencere degismeden en son log yazilmadigi icin surekli eklemek gerekiyor...
 
 		 EndIf
-		 $lastActiveWin = $curActiveWin
-		 $lastActiveWinHnd = $activeWinHnd
+		 $sLastActiveWin = $sCurrentActiveWin
+		 $sLastActiveWinHnd = $activeWinHnd
+		 $sLastPIDName = $sPIDName
 	  EndIf
    Next
-EndFunc
-
-;~ hexkey de belirtilen tuşa/mouse'a basilmis mi kontrol eder
-Func _IsPressed($HexKey)
-   Local $AR
-   $HexKey = '0x' & $HexKey
-   $AR = DllCall("user32","int","GetAsyncKeyState","int",$HexKey)
-   If NOT @Error And BitAND($AR[0],0x8000) = 0x8000 Then Return 1
-   Return 0
-EndFunc
-
-; periyodik olarak fare klik davranislarini yakalar
-; TODO: log lamaya eklenebilir
-Func _CaptureMouseClicks()
-   ConsoleWrite("Entering _CaptureMouseClicks" & @CRLF)
-   $click_timer = 0
-   While $click_timer < 10000
-	  If _IsPressed('01') or  _IsPressed('02') or  _IsPressed('04') Then
-
-		 ; Update the X and Y elements with the X and Y co-ordinates of the mouse.
-		 DllStructSetData($g_tStruct, "x", MouseGetPos(0))
-		 DllStructSetData($g_tStruct, "y", MouseGetPos(1))
-
-         Local $hWnd = _WinAPI_WindowFromPoint($g_tStruct) ; Retrieve the window handle.
-		 ; is window below mouse pointer child of active window handle
-		 $bWindowChild = _WinAPI_IsChild($hWnd, $activeWinHnd)
-		 If $activeWinHnd Then
-			;ConsoleWrite("Is window below mouse: " & $hWnd & " child of parent: " &  $activeWinHnd & " : " & $bWindowChild & @CRLF)
-			ConsoleWrite( "Window parent handle: " & $activeWinHnd & " " & _GetDatetime() &  " mouse clicked on parent @ x,y:" & $g_tStruct.X & "," & $g_tStruct.Y  & @CRLF)
-			; Mouse hareket sayilarini istatistik amacli toplama ve basit bir sozlukte kaydetme
-			Local $key = String($activeWinHnd)
-			If $winActivityDict.exists($key) Then
-			   Local $value = $winActivityDict.Item($key)
-			   Local $arr = StringSplit($value, "-")
-			   Local $count = $arr[2]
-			   $count = $count + 1
-			   $winActivityDict.Item($key) = "MouseClicked-" & $count
-			Else
-			   $winActivityDict.Add($key, "MouseClicked-1")
-			EndIf
-		 Else
-			ConsoleWrite( "Window handle: " & $hWnd & " " & _GetDatetime() &  " mouse clicked @ x,y:" & $g_tStruct.X & "," & $g_tStruct.Y  & @CRLF)
-		 EndIf
-		 Sleep(100)
-	  EndIf
-	  $click_timer = $click_timer + 0.1 ; busy wait
-   WEnd
 EndFunc
 
 _Main()
