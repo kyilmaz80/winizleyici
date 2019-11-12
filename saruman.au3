@@ -12,7 +12,7 @@
 ; author: korayy
 ; date:   191112
 ; desc:   work logger
-; version: 1.2
+; version: 1.3
 
 Const $POLL_TIME_MS = 1000
 ; _CaptureWindows degiskenler
@@ -43,7 +43,6 @@ Func AppendToLogFile($filePath, $data)
 	  MsgBox($MB_SYSTEMMODAL, "", "Dosyaya yazma islemi yapilamadi!")
 	  Return False
    EndIf
-
    ; Write data to the file using the handle returned by FileOpen.
    FileWriteLine($hFileOpen, $data)
    ; Close the handle returned by FileOpen.
@@ -80,9 +79,8 @@ Func NormalizeLastLine($filePath, $data)
 
    $aRecords = FileReadToArray($filePath)
    _ArrayPop($aRecords)
-;~    _ArrayAdd($aRecords, $sArrayData[1] & ";" & $sArrayLastLine2Arr[1] & "," & $sArrayLastLine2Arr[2]  & "," & $sArrayLastLine2Arr[3])
+   ;~ _ArrayAdd($aRecords, $sArrayData[1] & ";" & $sArrayLastLine2Arr[1] & "," & $sArrayLastLine2Arr[2]  & "," & $sArrayLastLine2Arr[3])
    $str = $sArrayData[1]
-
    For $i=1 to UBound($sArrayLastLine2Arr) - 1
 	  If $i = 1 Then
 		 $str = $str & ";" & $sArrayLastLine2Arr[$i]
@@ -141,7 +139,6 @@ Func _CaptureWindows()
    Local $activeWinList = WinList()
    Local $line = ""
    ConsoleWrite("Entering _CaptureWindows" & @CRLF)
-   ; butun BLACK_LIST_WINS deki pencerelerden biriyse bakilmamasi
 
    If isWinLocked() Then
 	  ConsoleWrite("Windows Locked! Idle mode....")
@@ -156,13 +153,12 @@ Func _CaptureWindows()
    EndIf
 
    For $i = 1 To $activeWinList[0][0]
+      ; butun BLACK_LIST_WINS deki pencerelerden biriyse bakilmamasi
 	  Local $sArray = StringSplit($BLACK_LIST_WINS, "|", $STR_ENTIRESPLIT)
 	  If _ArraySearch( $sArray, $activeWinList[$i][0] ) <> -1 Then
 		 Sleep(50)
 		 ContinueLoop
 	  EndIf
-
-	  ; TODO mouse click count add parent of windows to Log
 
 	  If $activeWinList[$i][0] <> "" And BitAND(WinGetState($activeWinList[$i][1]), $WIN_STATE_ACTIVE) Then
 		 Local $sCurrentActiveWin = $activeWinList[$i][0]
@@ -173,7 +169,6 @@ Func _CaptureWindows()
 		 If $sLastActiveWin == "" Then
 			Global $tStart = _GetDatetime()
 			ConsoleWrite($tStart & ","  &  $activeWinHnd & ","& $sCurrentActiveWin & " yeni acildi " & @CRLF )
-;~ 			AppendToLogFile($LOGFILE_PATH, @ComputerName, $sCurrentActiveWin & " " & $activeWinHnd, $tStart)
 			$line = $tStart & ";" & @ComputerName & "," & "START**"
 			AppendToLogFile($LOGFILE_PATH, $line)
 		 ; pencere degisirse
@@ -182,19 +177,15 @@ Func _CaptureWindows()
 			ConsoleWrite($tFinish2 & ","  & $tFinish & ","  & " -> " & $sLastActiveWin & " bitti" & @CRLF )
 			ConsoleWrite(_GetDatetime() & ","  & $activeWinHnd & " " &  $sLastActiveWin & " -> " & $sCurrentActiveWin & @CRLF )
 			$line =  $tFinish & ";" & @ComputerName & "," & $sLastPIDName  & "," & $sLastActiveWin
-;~ 			AppendToLogFile($LOGFILE_PATH, $line)
 			If isLastLineSame($LOGFILE_PATH, $line) Then
 			   NormalizeLastLine($LOGFILE_PATH, $line)
 			Else
 			   AppendToLogFile($LOGFILE_PATH, $line)
 			EndIf
-;~ 			AppendToLogFile($LOGFILE_PATH, @ComputerName, $sCurrentActiveWin & ";" & $activeWinHnd, $tFinish)
 		 ; pencere ayni ise
 		 Else
 			$tFinish2 = _GetDatetime()
 			ConsoleWrite($tFinish2 & "," & $sPIDName  & ";" & $activeWinHnd & " "  & $sLastActiveWin & " -> " & $sCurrentActiveWin & " aynen devam" & @CRLF )
-			; Mouse events
-			;Local $key = String($activeWinHnd)
 			$iPID = WinGetProcess($activeWinHnd)
 			$sPIDName = _ProcessGetName($iPID)
 			$line = $tFinish2 & ";" & @ComputerName & "," & $sPIDName  & "," & $sCurrentActiveWin
@@ -204,16 +195,6 @@ Func _CaptureWindows()
 			Else
 			   AppendToLogFile($LOGFILE_PATH, $line)
 			EndIf
-;~ 			If _isWinNotIdle($activeWinHnd) Then
-;~ 			   ConsoleWrite($activeWinHnd  & " penceresinde " & $winActivityDict.Item($key) & " olayi..." & @CRLF)
-;~ 			   $line = $tFinish2 & ";" & @ComputerName & ";" & $sPIDName  & ";" & $sCurrentActiveWin  & ";" & $winActivityDict.Item($key)
-;~ 			   AppendToLogFile($LOGFILE_PATH, $line)
-;~ 			Else
-;~ 			   $line = $tFinish2 & ";" & @ComputerName & ";" & $sPIDName  & ";" & $sCurrentActiveWin & ";idle"
-;~ 			   AppendToLogFile($LOGFILE_PATH, $line)
-;~ 			EndIf
-
-			; TODO: normalize etmek gerek! Pencere degismeden en son log yazilmadigi icin surekli eklemek gerekiyor...
 
 		 EndIf
 		 $sLastActiveWin = $sCurrentActiveWin
