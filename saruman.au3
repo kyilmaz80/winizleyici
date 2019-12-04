@@ -12,7 +12,7 @@
 ; author: korayy
 ; date:   191112
 ; desc:   work logger
-; version: 1.3
+; version: 1.4
 
 Const $POLL_TIME_MS = 1000
 ; _CaptureWindows degiskenler
@@ -25,6 +25,8 @@ Global $tFinish2 = 0
 Global $sLastPIDName = ""
 Global Const $BLACK_LIST_WINS = "Program Manager|"
 Global Const $LOGFILE_PATH = @WorkingDir & "\worklog.txt"
+Global Const $DELIM = ","
+Global Const $DELIM_T = ";"
 
 ; thread-like fonksiyonları calistir
 AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
@@ -57,9 +59,14 @@ Func isLastLineSame($filePath, $data)
    EndIf
    ; ConsoleWrite("Last Line: " & $lastLine &  @CRLF )
    ; ConsoleWrite("Data: " & $data  &  @CRLF)
-   $sArrayLastLine = StringSplit($lastLine, ";")
-   $sArrayData =  StringSplit($data, ";")
+   $sArrayLastLine = StringSplit($lastLine, $DELIM_T)
+   $sArrayData =  StringSplit($data, $DELIM_T)
    return not StringCompare($sArrayLastLine[2], $sArrayData[2])
+EndFunc
+
+; text whitelisting
+Func removeSpecialChars($str)
+	return StringRegExpReplace($str,"[^0-9,a-z,A-Z, ,\-,.,:,;,\h,\v]","")
 EndFunc
 
 ; kullanici hareketlerini dosyaya yazar
@@ -71,21 +78,21 @@ Func NormalizeLastLine($filePath, $data)
    Local $str
 
    $sFileRead = _ReadFile($filePath,$FO_READ, 1, -1)
-   $sArrayLastLine = StringSplit($sFileRead, ";")
-   $sArrayData =  StringSplit($data, ";")
+   $sArrayLastLine = StringSplit($sFileRead, $DELIM_T)
+   $sArrayData =  StringSplit($data, $DELIM_T)
 
    $sArrayLastLine2 = $sArrayLastLine[2]
-   $sArrayLastLine2Arr = StringSplit($sArrayLastLine2, ",")
+   $sArrayLastLine2Arr = StringSplit($sArrayLastLine2, $DELIM)
 
    $aRecords = FileReadToArray($filePath)
    _ArrayPop($aRecords)
-   ;~ _ArrayAdd($aRecords, $sArrayData[1] & ";" & $sArrayLastLine2Arr[1] & "," & $sArrayLastLine2Arr[2]  & "," & $sArrayLastLine2Arr[3])
+   ;~ _ArrayAdd($aRecords, $sArrayData[1] & $DELIM_T & $sArrayLastLine2Arr[1] & $DELIM & $sArrayLastLine2Arr[2]  & $DELIM & $sArrayLastLine2Arr[3])
    $str = $sArrayData[1]
    For $i=1 to UBound($sArrayLastLine2Arr) - 1
 	  If $i = 1 Then
-		 $str = $str & ";" & $sArrayLastLine2Arr[$i]
+		 $str = $str & $DELIM_T & $sArrayLastLine2Arr[$i]
 	  Else
-		 $str = $str & "," & $sArrayLastLine2Arr[$i]
+		 $str = $str & $DELIM & $sArrayLastLine2Arr[$i]
 	  EndIf
    Next
    ConsoleWrite("STR: " & $str & @CRLF)
@@ -143,7 +150,7 @@ Func _CaptureWindows()
    If isWinLocked() Then
 	  ConsoleWrite("Windows Locked! Idle mode....")
 	  $idleStart = _GetDatetime()
-	  $line = $idleStart & ";" & @ComputerName & "," & "IDLE**"
+	  $line = $idleStart & $DELIM_T & @ComputerName & $DELIM & "IDLE**"
 	  If isLastLineSame($LOGFILE_PATH, $line) Then
 		 NormalizeLastLine($LOGFILE_PATH, $line)
 	  Else
@@ -168,15 +175,15 @@ Func _CaptureWindows()
 		 ; ilk durum
 		 If $sLastActiveWin == "" Then
 			Global $tStart = _GetDatetime()
-			ConsoleWrite($tStart & ","  &  $activeWinHnd & ","& $sCurrentActiveWin & " yeni acildi " & @CRLF )
-			$line = $tStart & ";" & @ComputerName & "," & "START**"
+			ConsoleWrite($tStart & $DELIM  &  $activeWinHnd & $DELIM& $sCurrentActiveWin & " yeni acildi " & @CRLF )
+			$line = $tStart & $DELIM_T & @ComputerName & $DELIM & "START**"
 			AppendToLogFile($LOGFILE_PATH, $line)
 		 ; pencere degisirse
 		 ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
 			Global $tFinish = _GetDatetime()
-			ConsoleWrite($tFinish2 & ","  & $tFinish & ","  & " -> " & $sLastActiveWin & " bitti" & @CRLF )
-			ConsoleWrite(_GetDatetime() & ","  & $activeWinHnd & " " &  $sLastActiveWin & " -> " & $sCurrentActiveWin & @CRLF )
-			$line =  $tFinish & ";" & @ComputerName & "," & $sLastPIDName  & "," & $sLastActiveWin
+			ConsoleWrite($tFinish2 & $DELIM  & $tFinish & $DELIM  & " -> " & $sLastActiveWin & " bitti" & @CRLF )
+			ConsoleWrite(_GetDatetime() & $DELIM  & $activeWinHnd & " " &  $sLastActiveWin & " -> " & $sCurrentActiveWin & @CRLF )
+			$line =  $tFinish & $DELIM_T & @ComputerName & $DELIM & $sLastPIDName  & $DELIM & removeSpecialChars($sLastActiveWin)
 			If isLastLineSame($LOGFILE_PATH, $line) Then
 			   NormalizeLastLine($LOGFILE_PATH, $line)
 			Else
@@ -185,10 +192,10 @@ Func _CaptureWindows()
 		 ; pencere ayni ise
 		 Else
 			$tFinish2 = _GetDatetime()
-			ConsoleWrite($tFinish2 & "," & $sPIDName  & ";" & $activeWinHnd & " "  & $sLastActiveWin & " -> " & $sCurrentActiveWin & " aynen devam" & @CRLF )
+			ConsoleWrite($tFinish2 & $DELIM & $sPIDName  & $DELIM_T & $activeWinHnd & " "  & $sLastActiveWin & " -> " & $sCurrentActiveWin & " aynen devam" & @CRLF )
 			$iPID = WinGetProcess($activeWinHnd)
 			$sPIDName = _ProcessGetName($iPID)
-			$line = $tFinish2 & ";" & @ComputerName & "," & $sPIDName  & "," & $sCurrentActiveWin
+			$line = $tFinish2 & $DELIM_T & @ComputerName & $DELIM & $sPIDName  & $DELIM & removeSpecialChars($sCurrentActiveWin)
 
 			If isLastLineSame($LOGFILE_PATH, $line) Then
 			   NormalizeLastLine($LOGFILE_PATH, $line)
