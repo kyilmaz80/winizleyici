@@ -8,11 +8,10 @@
 #include <Process.au3>
 #include <File.au3>
 
-
 ; author: korayy
 ; date:   191112
 ; desc:   work logger
-; version: 1.4
+; version: 1.5
 
 Const $POLL_TIME_MS = 1000
 ; _CaptureWindows degiskenler
@@ -95,7 +94,7 @@ Func NormalizeLastLine($filePath, $data)
 		 $str = $str & $DELIM & $sArrayLastLine2Arr[$i]
 	  EndIf
    Next
-   ConsoleWrite("STR: " & $str & @CRLF)
+   ; ConsoleWrite("STR: " & $str & @CRLF)
     _ArrayAdd($aRecords,$str)
    ConsoleWrite("overwriting with normalized data..." & $aRecords & @CRLF)
    _FileWriteFromArray($filePath, $aRecords)
@@ -130,6 +129,19 @@ Func isWinLocked()
    EndIf
 EndFunc
 
+; log dosyasina idle** ekler
+Func idleToLog()
+   ConsoleWrite("Windows Locked! Idle mode....")
+   $idleStart = _GetDatetime()
+   $line = $idleStart & $DELIM_T & @ComputerName & $DELIM & "IDLE**"
+   If isLastLineSame($LOGFILE_PATH, $line) Then
+	  NormalizeLastLine($LOGFILE_PATH, $line)
+   Else
+	  AppendToLogFile($LOGFILE_PATH, $line)
+   EndIf
+   Return
+EndFunc
+
 ; yyyy-mm-dd hh:mm:ss formatinda veya epoch formatinda guncel tarih zaman doner
 Func _GetDatetime($bTimestamp = False)
    $timestamp = _DateDiff('s', "1970/01/01 00:00:00", _NowCalc())
@@ -140,22 +152,32 @@ Func _GetDatetime($bTimestamp = False)
    return $timedate
 EndFunc
 
-;~ periyodik olarak pencere davranislarini yakalar
-;~ aktif pencere yakalayici
+; verilen pencereler winList listesinde aktif pencere durumu doner
+Func isWindowsActive($aList)
+   Local $sArray = StringSplit($BLACK_LIST_WINS, "|", $STR_ENTIRESPLIT)
+   Local $bActive = False
+   For $i = 1 To $aList[0][0]
+	  If _ArraySearch( $sArray, $aList[$i][0] ) <> -1 Then
+		 ContinueLoop
+	  EndIf
+	  If $aList[$i][0] <> "" And BitAND(WinGetState($aList[$i][1]), $WIN_STATE_ACTIVE) Then
+		 ; ConsoleWrite("Title: " & $aList[$i][0] & @CRLF & "Handle: " & $aList[$i][1] & @CRLF)
+		 $bActive = True
+		 ExitLoop
+	  EndIf
+   Next
+   Return $bActive
+EndFunc
+
+;~ aktif pencere yakalayici ana program - periyodik olarak pencere davranislarini yakalar
 Func _CaptureWindows()
    Local $activeWinList = WinList()
    Local $line = ""
    ConsoleWrite("Entering _CaptureWindows" & @CRLF)
 
-   If isWinLocked() Then
-	  ConsoleWrite("Windows Locked! Idle mode....")
-	  $idleStart = _GetDatetime()
-	  $line = $idleStart & $DELIM_T & @ComputerName & $DELIM & "IDLE**"
-	  If isLastLineSame($LOGFILE_PATH, $line) Then
-		 NormalizeLastLine($LOGFILE_PATH, $line)
-	  Else
-		 AppendToLogFile($LOGFILE_PATH, $line)
-	  EndIf
+   ; eger windows lock lanmissa veya aktif pencere yoksa idle kabul et
+   If isWinLocked() or Not isWindowsActive($activeWinList) Then
+	  idleToLog()
 	  Return
    EndIf
 
