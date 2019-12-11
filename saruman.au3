@@ -1,17 +1,21 @@
-#include <MsgBoxConstants.au3>
-#include <FileConstants.au3>
-#include <Date.au3>
 #include <AutoItConstants.au3>
 #include <Array.au3>
+#include <Date.au3>
+#include <File.au3>
+#include <FileConstants.au3>
+#include <GDIPlus.au3>
+#include <MsgBoxConstants.au3>
+#include <Process.au3>
+#include <ScreenCapture.au3>
+#include <WinAPI.au3>
+#include <WinAPIHObj.au3>
 #include <WinAPIFiles.au3>
 #include <WinAPISysWin.au3>
-#include <Process.au3>
-#include <File.au3>
 
 ; author: korayy
 ; date:   191112
 ; desc:   work logger
-; version: 1.5
+; version: 1.6
 
 Const $POLL_TIME_MS = 1000
 ; _CaptureWindows degiskenler
@@ -26,6 +30,7 @@ Global Const $BLACK_LIST_WINS = "Program Manager|"
 Global Const $LOGFILE_PATH = @WorkingDir & "\worklog.txt"
 Global Const $DELIM = ","
 Global Const $DELIM_T = ";"
+Global Const $SCREENSHOT_PATH = @WorkingDir & "\caps\" & @YEAR & @MON & @MDAY
 
 ; thread-like fonksiyonları calistir
 AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
@@ -169,6 +174,23 @@ Func isWindowsActive($aList)
    Return $bActive
 EndFunc
 
+;~ verilen pencerenin ekran görüntüsünü yakalar
+Func ScreenCaptureWin($winHandle, $fileCapturePath)
+   _GDIPlus_Startup()
+   Local $hIA = _GDIPlus_ImageAttributesCreate() ;create an ImageAttribute object
+   Local $tColorMatrix = _GDIPlus_ColorMatrixCreateGrayScale() ;create grayscale color matrix
+   _GDIPlus_ImageAttributesSetColorMatrix($hIA, 0, True, $tColorMatrix) ;set negative color matrix
+   ; Capture window
+   $hBitmap = _ScreenCapture_CaptureWnd("",$activeWinHnd)
+   $hImage = _GDIPlus_BitmapCreateFromHBITMAP($hBitmap)
+   ConsoleWrite($fileCapturePath & " dosya yaziliyor.." & @CRLF)
+   _GDIPlus_ImageSaveToFile($hImage, $fileCapturePath )
+   ; Clean up resources
+   _GDIPlus_ImageDispose($hImage)
+   _WinAPI_DeleteObject($hBitmap)
+   _GDIPlus_ShutDown()
+EndFunc
+
 ;~ aktif pencere yakalayici ana program - periyodik olarak pencere davranislarini yakalar
 Func _CaptureWindows()
    Local $activeWinList = WinList()
@@ -192,6 +214,12 @@ Func _CaptureWindows()
 	  If $activeWinList[$i][0] <> "" And BitAND(WinGetState($activeWinList[$i][1]), $WIN_STATE_ACTIVE) Then
 		 Local $sCurrentActiveWin = $activeWinList[$i][0]
 		 $activeWinHnd = $activeWinList[$i][1]
+		 ; ekran goruntusu alma
+		 If Not FileExists($SCREENSHOT_PATH) Then
+			DirCreate($SCREENSHOT_PATH)
+		 EndIf
+		 $screenShotFilePath = $SCREENSHOT_PATH & "\" & _GetDatetime(True) & ".jpg"
+		 ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 		 Local $iPID = WinGetProcess($activeWinHnd)
 		 Local $sPIDName = _ProcessGetName($iPID)
 		 ; ilk durum
