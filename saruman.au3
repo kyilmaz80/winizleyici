@@ -15,7 +15,7 @@
 ; author: korayy
 ; date:   191112
 ; desc:   work logger
-; version: 1.6
+; version: 1.7
 
 Const $POLL_TIME_MS = 1000
 ; _CaptureWindows degiskenler
@@ -138,7 +138,7 @@ EndFunc
 Func idleToLog()
    ConsoleWrite("Windows Locked! Idle mode....")
    $idleStart = _GetDatetime()
-   $line = $idleStart & $DELIM_T & @ComputerName & $DELIM & "IDLE**"
+   $line = $idleStart & $DELIM_T & @UserName & $DELIM & "IDLE**"
    If isLastLineSame($LOGFILE_PATH, $line) Then
 	  NormalizeLastLine($LOGFILE_PATH, $line)
    Else
@@ -218,22 +218,28 @@ Func _CaptureWindows()
 		 If Not FileExists($SCREENSHOT_PATH) Then
 			DirCreate($SCREENSHOT_PATH)
 		 EndIf
-		 $screenShotFilePath = $SCREENSHOT_PATH & "\" & _GetDatetime(True) & ".jpg"
-		 ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
+		 ;$screenShotFilePath = $SCREENSHOT_PATH & "\" & _GetDatetime(True) & ".jpg"
+		 ;ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 		 Local $iPID = WinGetProcess($activeWinHnd)
 		 Local $sPIDName = _ProcessGetName($iPID)
 		 ; ilk durum
 		 If $sLastActiveWin == "" Then
 			Global $tStart = _GetDatetime()
 			ConsoleWrite($tStart & $DELIM  &  $activeWinHnd & $DELIM& $sCurrentActiveWin & " yeni acildi " & @CRLF )
-			$line = $tStart & $DELIM_T & @ComputerName & $DELIM & "START**"
+			; screen capture
+			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]","") & ".jpg"
+			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
+			$line = $tStart & $DELIM_T & @UserName & $DELIM & "START**"
 			AppendToLogFile($LOGFILE_PATH, $line)
 		 ; pencere degisirse
 		 ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
 			Global $tFinish = _GetDatetime()
 			ConsoleWrite($tFinish2 & $DELIM  & $tFinish & $DELIM  & " -> " & $sLastActiveWin & " bitti" & @CRLF )
 			ConsoleWrite(_GetDatetime() & $DELIM  & $activeWinHnd & " " &  $sLastActiveWin & " -> " & $sCurrentActiveWin & @CRLF )
-			$line =  $tFinish & $DELIM_T & @ComputerName & $DELIM & $sLastPIDName  & $DELIM & removeSpecialChars($sLastActiveWin)
+			$line =  $tFinish & $DELIM_T & @UserName & $DELIM & $sLastPIDName  & $DELIM & removeSpecialChars($sLastActiveWin)
+			; screen capture
+			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tFinish, "[-:\h]","") & ".jpg"
+			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 			If isLastLineSame($LOGFILE_PATH, $line) Then
 			   NormalizeLastLine($LOGFILE_PATH, $line)
 			Else
@@ -245,8 +251,7 @@ Func _CaptureWindows()
 			ConsoleWrite($tFinish2 & $DELIM & $sPIDName  & $DELIM_T & $activeWinHnd & " "  & $sLastActiveWin & " -> " & $sCurrentActiveWin & " aynen devam" & @CRLF )
 			$iPID = WinGetProcess($activeWinHnd)
 			$sPIDName = _ProcessGetName($iPID)
-			$line = $tFinish2 & $DELIM_T & @ComputerName & $DELIM & $sPIDName  & $DELIM & removeSpecialChars($sCurrentActiveWin)
-
+			$line = $tFinish2 & $DELIM_T & @UserName & $DELIM & $sPIDName  & $DELIM & removeSpecialChars($sCurrentActiveWin)
 			If isLastLineSame($LOGFILE_PATH, $line) Then
 			   NormalizeLastLine($LOGFILE_PATH, $line)
 			Else
