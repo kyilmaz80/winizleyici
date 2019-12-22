@@ -13,9 +13,9 @@
 #include <WinAPISysWin.au3>
 
 ; author: korayy
-; date:   191112
+; date:   191222
 ; desc:   work logger
-; version: 1.7
+; version: 1.8
 
 Const $POLL_TIME_MS = 1000
 ; _CaptureWindows degiskenler
@@ -125,9 +125,19 @@ Func _ReadFile($sFilePath, $FILE_MODE=$FO_READ, $bReadLine=0, $line=0)
    return $sFileRead
 EndFunc
 
+; windows rdp kontrol
+Func IsRDP()
+   If @OSVersion == "WIN_10" Then
+	  Return  StringInStr(EnvGet('SESSIONNAME'), "RDP") > 0
+   Else
+	  ; FIXME Win7 icin test
+	  Return EnvGet('SESSIONNAME') == ''
+   EndIf
+EndFunc
+
 ; windows lock kontrolu
 Func isWinLocked()
-   If ProcessExists("LogonUI.exe") Then
+   If Not IsRDP() and  ProcessExists("LogonUI.exe") Then
 	  Return True
    Else
 	  Return False
