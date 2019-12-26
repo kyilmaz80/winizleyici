@@ -13,14 +13,13 @@
 #include <WinAPISysWin.au3>
 
 ; author: korayy
-; date:   191222
+; date:   191227
 ; desc:   work logger
-; version: 1.8
+; version: 1.9
 
 Const $POLL_TIME_MS = 1000
 ; _CaptureWindows degiskenler
 Global $sLastActiveWin = ""
-Global $g_tStruct = DllStructCreate($tagPOINT)
 Global $activeWinHnd = ""
 Global $sLastActiveWinHnd = ""
 Global $bWindowChild = 0
@@ -31,6 +30,9 @@ Global Const $LOGFILE_PATH = @WorkingDir & "\worklog.txt"
 Global Const $DELIM = ","
 Global Const $DELIM_T = ";"
 Global Const $SCREENSHOT_PATH = @WorkingDir & "\caps\" & @YEAR & @MON & @MDAY
+Global $IS_SCREEN_CAP = True
+Global $aFileArray[0] = []
+Global Const $FSYNCBUFFER = 5
 
 ; thread-like fonksiyonları calistir
 AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
@@ -42,6 +44,11 @@ Func _Main()
    Wend
 EndFunc
 
+; text whitelisting
+Func removeSpecialChars($str)
+	return StringRegExpReplace($str,"[^0-9,a-z,A-Z, ,\-,.,:,;,\h,\v]","")
+EndFunc
+
 ; kullanici hareketlerini dosyaya yazar
 Func AppendToLogFile($filePath, $data)
    Local $hFileOpen = FileOpen($filePath, $FO_APPEND)
@@ -50,14 +57,25 @@ Func AppendToLogFile($filePath, $data)
 	  Return False
    EndIf
    ; Write data to the file using the handle returned by FileOpen.
+   Local $sLastLine = _ReadFile($filePath,$FO_READ, 1, -1)
+
    FileWriteLine($hFileOpen, $data)
    ; Close the handle returned by FileOpen.
    FileClose($hFileOpen)
 EndFunc
 
-; normalize icin dosyadaki son satirla veriyi karsilastirir.
-Func isLastLineSame($filePath, $data)
-   Local $lastLine = _ReadFile($filePath,$FO_READ, 1,-1)
+; kullanici hareketlerini array'ye yazar
+Func AppendToLogFileArr(ByRef $arr, $data)
+   ConsoleWrite("adding data to array..." & @CRLF)
+   _ArrayAdd($arr, $data)
+EndFunc
+
+; normalize icin array'deki son satirla veriyi karsilastirir.
+Func isLastLineSameArr(ByRef $arr, $data)
+   If UBound($arr) == 0 Then
+	  Return False
+   EndIf
+   Local $lastLine = $arr[UBound($arr) - 1]
    If StringLen($lastLine) = 0 Then
 	  Return False
    EndIf
@@ -68,27 +86,22 @@ Func isLastLineSame($filePath, $data)
    return not StringCompare($sArrayLastLine[2], $sArrayData[2])
 EndFunc
 
-; text whitelisting
-Func removeSpecialChars($str)
-	return StringRegExpReplace($str,"[^0-9,a-z,A-Z, ,\-,.,:,;,\h,\v]","")
-EndFunc
-
-; kullanici hareketlerini dosyaya yazar
-Func NormalizeLastLine($filePath, $data)
+; kullanici hareketlerini array'e normalize yazar
+Func NormalizeLastLineArr(ByRef $arr, $data)
    Local $sArrayLastLine
    Local $sArrayData
    Local $aRecords
    Local $sFileRead
    Local $str
 
-   $sFileRead = _ReadFile($filePath,$FO_READ, 1, -1)
-   $sArrayLastLine = StringSplit($sFileRead, $DELIM_T)
+   $sFileReadLast = $arr[UBound($arr) - 1]
+   $sArrayLastLine = StringSplit($sFileReadLast, $DELIM_T)
    $sArrayData =  StringSplit($data, $DELIM_T)
 
    $sArrayLastLine2 = $sArrayLastLine[2]
    $sArrayLastLine2Arr = StringSplit($sArrayLastLine2, $DELIM)
 
-   $aRecords = FileReadToArray($filePath)
+   $aRecords = $arr
    _ArrayPop($aRecords)
    ;~ _ArrayAdd($aRecords, $sArrayData[1] & $DELIM_T & $sArrayLastLine2Arr[1] & $DELIM & $sArrayLastLine2Arr[2]  & $DELIM & $sArrayLastLine2Arr[3])
    $str = $sArrayData[1]
@@ -100,9 +113,10 @@ Func NormalizeLastLine($filePath, $data)
 	  EndIf
    Next
    ; ConsoleWrite("STR: " & $str & @CRLF)
-    _ArrayAdd($aRecords,$str)
+   _ArrayAdd($aRecords,$str)
    ConsoleWrite("overwriting with normalized data..." & $aRecords & @CRLF)
-   _FileWriteFromArray($filePath, $aRecords)
+   ; _FileWriteFromArray($filePath, $aRecords)
+   $arr = $aRecords
 EndFunc
 
 ; primitif dosya okur ve icerigini doner
@@ -146,13 +160,13 @@ EndFunc
 
 ; log dosyasina idle** ekler
 Func idleToLog()
-   ConsoleWrite("Windows Locked! Idle mode....")
    $idleStart = _GetDatetime()
+   ConsoleWrite($idleStart & " Windows Locked! Idle mode....")
    $line = $idleStart & $DELIM_T & @UserName & $DELIM & "IDLE**"
-   If isLastLineSame($LOGFILE_PATH, $line) Then
-	  NormalizeLastLine($LOGFILE_PATH, $line)
+   If isLastLineSameArr($aFileArray, $line) Then
+	  NormalizeLastLineArr($aFileArray, $line)
    Else
-	  AppendToLogFile($LOGFILE_PATH, $line)
+	  AppendToLogFileArr($aFileArray, $line)
    EndIf
    Return
 EndFunc
@@ -186,6 +200,9 @@ EndFunc
 
 ;~ verilen pencerenin ekran görüntüsünü yakalar
 Func ScreenCaptureWin($winHandle, $fileCapturePath)
+   If Not $IS_SCREEN_CAP Then
+	  Return
+   EndIf
    _GDIPlus_Startup()
    Local $hIA = _GDIPlus_ImageAttributesCreate() ;create an ImageAttribute object
    Local $tColorMatrix = _GDIPlus_ColorMatrixCreateGrayScale() ;create grayscale color matrix
@@ -199,6 +216,35 @@ Func ScreenCaptureWin($winHandle, $fileCapturePath)
    _GDIPlus_ImageDispose($hImage)
    _WinAPI_DeleteObject($hBitmap)
    _GDIPlus_ShutDown()
+EndFunc
+
+; buffer array'deki satırları geriden dosyaya sync eder
+Func SyncToFile(ByRef $arr, $filePath)
+   Local $arr_copy = $arr
+   _ArrayReverse($arr_copy)
+   ; FSYNCBUFFER kadar array dolmussa dosyaya senkronla
+   If UBound($arr_copy) < $FSYNCBUFFER Then
+	  Return
+   EndIf
+
+   ConsoleWrite("Array Buffer sync ediliyor...")
+   Local $str_lines = ""
+   For $i=0 To $FSYNCBUFFER-1
+	  ; AppendToLogFile($filePath, _ArrayPop($arr_copy))
+	  If StringLen($str_lines) == 0 Then
+		 $str_lines = _ArrayPop($arr_copy)
+	  Else
+		 $str_lines = $str_lines &  @CRLF & _ArrayPop($arr_copy)
+	  EndIf
+   Next
+   ; Msgbox("","STRLINES", $str_lines)
+   AppendToLogFile($filePath, $str_lines)
+   ;If UBound($arr) >= $FSYNCBUFFER Then
+	  ; pop array?
+   ;  ConsoleWrite("Array Buffer sync ediliyor...")
+   ;_FileWriteFromArray($filePath, $arr)
+   ;EndIf
+   $arr = $arr_copy
 EndFunc
 
 ;~ aktif pencere yakalayici ana program - periyodik olarak pencere davranislarini yakalar
@@ -228,8 +274,7 @@ Func _CaptureWindows()
 		 If Not FileExists($SCREENSHOT_PATH) Then
 			DirCreate($SCREENSHOT_PATH)
 		 EndIf
-		 ;$screenShotFilePath = $SCREENSHOT_PATH & "\" & _GetDatetime(True) & ".jpg"
-		 ;ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
+
 		 Local $iPID = WinGetProcess($activeWinHnd)
 		 Local $sPIDName = _ProcessGetName($iPID)
 		 ; ilk durum
@@ -240,7 +285,7 @@ Func _CaptureWindows()
 			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]","") & ".jpg"
 			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 			$line = $tStart & $DELIM_T & @UserName & $DELIM & "START**"
-			AppendToLogFile($LOGFILE_PATH, $line)
+			AppendToLogFileArr($aFileArray, $line)
 		 ; pencere degisirse
 		 ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
 			Global $tFinish = _GetDatetime()
@@ -250,10 +295,10 @@ Func _CaptureWindows()
 			; screen capture
 			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tFinish, "[-:\h]","") & ".jpg"
 			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
-			If isLastLineSame($LOGFILE_PATH, $line) Then
-			   NormalizeLastLine($LOGFILE_PATH, $line)
+			If isLastLineSameArr($aFileArray, $line) Then
+			   NormalizeLastLineArr($aFileArray, $line)
 			Else
-			   AppendToLogFile($LOGFILE_PATH, $line)
+			   AppendToLogFileArr($aFileArray, $line)
 			EndIf
 		 ; pencere ayni ise
 		 Else
@@ -262,10 +307,10 @@ Func _CaptureWindows()
 			$iPID = WinGetProcess($activeWinHnd)
 			$sPIDName = _ProcessGetName($iPID)
 			$line = $tFinish2 & $DELIM_T & @UserName & $DELIM & $sPIDName  & $DELIM & removeSpecialChars($sCurrentActiveWin)
-			If isLastLineSame($LOGFILE_PATH, $line) Then
-			   NormalizeLastLine($LOGFILE_PATH, $line)
+			If isLastLineSameArr($aFileArray, $line) Then
+			   NormalizeLastLineArr($aFileArray, $line)
 			Else
-			   AppendToLogFile($LOGFILE_PATH, $line)
+			   AppendToLogFileArr($aFileArray, $line)
 			EndIf
 
 		 EndIf
@@ -274,6 +319,7 @@ Func _CaptureWindows()
 		 $sLastPIDName = $sPIDName
 	  EndIf
    Next
+   SyncToFile($aFileArray, $LOGFILE_PATH)
 EndFunc
 
 _Main()
