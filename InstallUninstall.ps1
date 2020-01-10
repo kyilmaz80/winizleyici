@@ -1,9 +1,17 @@
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
+{
+    Write-Host "please run elevated user"
+    Start-Sleep -s 5
+    exit
+    
+}
+
 $url="http://35.156.50.195/esbackup/winizleyici.zip"
 $file ="winizleyici.zip"
 $output = $env:APPDATA+"\Aryasoft"
 $destFile = $output+"\winizleyici.zip"
 
-Set-ExecutionPolicy Bypass -Force
+Set-ExecutionPolicy Bypass -Force -CurrentUser
 
 
 function Install(){
