@@ -9,11 +9,14 @@ Set-ExecutionPolicy Bypass -Force
 function Install(){
     New-Item -ItemType Directory -Force -Path $output
     Download
-    while(test-path $destFile)
+    while($true)
     {
-        Expand-Archive $destFile -DestinationPath $output
-        rm $destFile
-        break
+        if(test-path $destFile)
+        {
+            Expand-Archive $destFile -DestinationPath $output
+            rm $destFile
+            break
+        }
     }
 
     cd $output
