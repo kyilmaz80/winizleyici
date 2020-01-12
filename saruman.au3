@@ -11,13 +11,14 @@
 #include <WinAPIHObj.au3>
 #include <WinAPIFiles.au3>
 #include <WinAPISysWin.au3>
+#include <TrayConstants.au3>
 
 ; author: korayy
-; date:   191227
+; date:   200112
 ; desc:   work logger
-; version: 1.9
+; version: 1.10
 
-Const $POLL_TIME_MS = 1000
+Const $POLL_TIME_MS = 5000
 ; _CaptureWindows degiskenler
 Global $sLastActiveWin = ""
 Global $activeWinHnd = ""
@@ -33,15 +34,31 @@ Global Const $SCREENSHOT_PATH = @WorkingDir & "\caps\" & @YEAR & @MON & @MDAY
 Global $IS_SCREEN_CAP = True
 Global $aFileArray[0] = []
 Global Const $FSYNCBUFFER = 5
+Global Const $TRAY_ICON_NAME = "saruman.ico"
 
 ; thread-like fonksiyonları calistir
 AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
 
 ; busy wait ana program
 Func _Main()
+   setTray()
    While 1
 	  Sleep(500)
    Wend
+EndFunc
+
+; tray icon degistirir
+Func setTray()
+   ;~ #NoTrayIcon
+   Opt("TrayMenuMode", 3) ; no default menu (Paused/Exit)
+   TraySetState($TRAY_ICONSTATE_SHOW) ; Show the tray menu.
+   If FileExists($TRAY_ICON_NAME) Then
+	  ; TODO farkli icon icin icon dosyanin buyuklugu eklenmeli!
+	  If FileGetSize($TRAY_ICON_NAME) = 41111 Then
+		 ConsoleWrite("Tray icon degistiriliyor..." & @CRLF)
+		 TraySetIcon($TRAY_ICON_NAME)
+	  EndIf
+   EndIf
 EndFunc
 
 ; text whitelisting
@@ -161,7 +178,7 @@ EndFunc
 ; log dosyasina idle** ekler
 Func idleToLog()
    $idleStart = _GetDatetime()
-   ConsoleWrite($idleStart & " Windows Locked! Idle mode....")
+   ConsoleWrite($idleStart & "Idle mode....")
    $line = $idleStart & $DELIM_T & @UserName & $DELIM & "IDLE**"
    If isLastLineSameArr($aFileArray, $line) Then
 	  NormalizeLastLineArr($aFileArray, $line)
@@ -237,13 +254,8 @@ Func SyncToFile(ByRef $arr, $filePath)
 		 $str_lines = $str_lines &  @CRLF & _ArrayPop($arr_copy)
 	  EndIf
    Next
-   ; Msgbox("","STRLINES", $str_lines)
    AppendToLogFile($filePath, $str_lines)
-   ;If UBound($arr) >= $FSYNCBUFFER Then
-	  ; pop array?
-   ;  ConsoleWrite("Array Buffer sync ediliyor...")
-   ;_FileWriteFromArray($filePath, $arr)
-   ;EndIf
+
    $arr = $arr_copy
 EndFunc
 
@@ -255,6 +267,8 @@ Func _CaptureWindows()
 
    ; eger windows lock lanmissa veya aktif pencere yoksa idle kabul et
    If isWinLocked() or Not isWindowsActive($activeWinList) Then
+	  If isWindowsActive = False Then ConsoleWrite("Aktif pencere yok! IDLE**" & @CRLF)
+	  If isWinLocked = True Then ConsoleWrite( "Windows Locked! IDLE**" & @CRLF)
 	  idleToLog()
 	  Return
    EndIf
