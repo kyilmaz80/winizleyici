@@ -1,0 +1,14 @@
+version: 1.0.{build}
+image: Visual Studio 2015
+install:
+- ps: >-
+    $installer = "$PSScriptRoot\setup.exe"
+    (New-Object System.Net.WebClient).DownloadFile("https://github.com/turbo/AutoIt-CI/releases/download/1/autoit-v3-setup.exe", $installer)
+    Start-Process -FilePath $installer -ArgumentList "/S" -NoNewWindow -Wait
+build_script:
+- cmd: >-
+    "%HOMEDRIVE%\Program Files (x86)\AutoIt3\aut2exe\aut2exe.exe"  /in "%CD%\saruman.au3" /out "%CD%\saruman.exe" /nopack /comp 2 /Console
+	"%HOMEDRIVE%\Program Files (x86)\AutoIt3\aut2exe\aut2exe.exe"  /in "%CD%\saruman-test.au3" /out "%CD%\saruman-test.exe" /nopack /comp 2 /Console
+
+    saruman-test.exe
+test: off
