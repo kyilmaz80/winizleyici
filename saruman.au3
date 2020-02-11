@@ -82,6 +82,9 @@ EndFunc   ;==>setTray
 ;~ surekli supervizor process'e bakar
 Func _StartSupervisor($sProcessName)
 	If Not ProcessExists($sProcessName) Then
+		If Not FileExists(@WorkingDir & ".\" & $SUPERVISOR_EXE_NAME) Then
+			_DebugPrint( $SUPERVISOR_EXE_NAME & " exe programi bulunamadi..." & @CRLF)
+		EndIf
 		$iPID = Run(@WorkingDir & ".\" & $sProcessName, @WorkingDir)
 		_DebugPrint( $sProcessName & "prosesi " & $iPID  & " pid si ile çalistirildi..." & @CRLF)
 	EndIf
