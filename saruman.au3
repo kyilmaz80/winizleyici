@@ -16,14 +16,14 @@
 ; author: korayy
 ; date:   200205
 ; desc:   work logger
-; version: 1.13
+; version: 1.14
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.13.0.2
+#AutoIt3Wrapper_Res_Fileversion=1.14.0.1
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.13
+#AutoIt3Wrapper_Res_ProductVersion=1.14
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -248,10 +248,18 @@ Func idleToLog()
 	$idleStart = _GetDatetime()
 	_DebugPrint($idleStart & " Idle mode....")
 	$line = $idleStart & $DELIM_T & @UserName & $DELIM & "IDLE**"
-	If isLastLineSameArr($aFileArray, $line) Then
-		NormalizeLastLineArr($aFileArray, $line)
+	If $LOG_BUFFER Then
+		If isLastLineSameArr($aFileArray, $line) Then
+			NormalizeLastLineArr($aFileArray, $line)
+		Else
+			AppendToLogFileArr($aFileArray, $line)
+		EndIf
 	Else
-		AppendToLogFileArr($aFileArray, $line)
+		If isLastLineSame($LOGFILE_PATH, $line) Then
+			NormalizeLastLine($LOGFILE_PATH, $line)
+		Else
+			AppendToLogFile($LOGFILE_PATH, $line)
+		EndIf
 	EndIf
 	Return
 EndFunc   ;==>idleToLog
