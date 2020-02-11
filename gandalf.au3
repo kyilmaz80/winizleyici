@@ -4,8 +4,9 @@
 ; author: korayy
 ; date:   200205
 ; desc:   saruman process checker
-; version: 1.0
+; version: 1.1
 
+#NoTrayIcon
 Const $POLL_TIME_MS = 2000
 Global Const $DEBUG = True
 Global Const $DEBUG_LOGFILE = @ScriptDir & "\gandalf_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
