@@ -16,14 +16,14 @@
 ; author: korayy
 ; date:   200205
 ; desc:   work logger
-; version: 1.12
+; version: 1.13
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.12.0.1
+#AutoIt3Wrapper_Res_Fileversion=1.13.0.2
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.12
+#AutoIt3Wrapper_Res_ProductVersion=1.13
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -49,6 +49,7 @@ Global Const $TRAY_ICON_NAME = "saruman.ico"
 Global Const $DEBUG = True
 Global Const $DEBUG_LOGFILE = @ScriptDir & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
 Global Const $LOG_BUFFER = False
+Global Const $SUPERVISOR_EXE_NAME = "gandalf.exe"
 
 ; thread-like fonksiyonları calistir
 AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
@@ -57,6 +58,7 @@ AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
 Func _Main()
 	setTray()
 	While 1
+		_StartSupervisor($SUPERVISOR_EXE_NAME)
 		Sleep(500)
 	WEnd
 EndFunc   ;==>_Main
@@ -76,6 +78,14 @@ Func setTray()
 	TraySetState($TRAY_ICONSTATE_SHOW) ; Show the tray menu.
 	TraySetIcon($TRAY_ICON_NAME, 99)
 EndFunc   ;==>setTray
+
+;~ surekli supervizor process'e bakar
+Func _StartSupervisor($sProcessName)
+	If Not ProcessExists($sProcessName) Then
+		$iPID = Run(@WorkingDir & ".\" & $sProcessName, @WorkingDir)
+		_DebugPrint( $sProcessName & "prosesi " & $iPID  & " pid si ile çalistirildi..." & @CRLF)
+	EndIf
+EndFunc
 
 ; text whitelisting
 Func removeSpecialChars($str)
