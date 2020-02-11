@@ -4,10 +4,10 @@
 ; author: korayy
 ; date:   200205
 ; desc:   saruman process checker
-; version: 1.1
+; version: 1.2
 
 #NoTrayIcon
-Const $POLL_TIME_MS = 2000
+Const $POLL_TIME_MS = 1000
 Global Const $DEBUG = True
 Global Const $DEBUG_LOGFILE = @ScriptDir & "\gandalf_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
 Global Const $SUPERVISOR_EXE_NAME = "saruman.exe"
@@ -33,6 +33,10 @@ EndFunc   ;==>_DebugPrint
 ;~ surekli supervizor process'e bakar
 Func _StartSupervisor()
 	If Not ProcessExists($SUPERVISOR_EXE_NAME) Then
+		If Not FileExists(@WorkingDir & ".\" & $SUPERVISOR_EXE_NAME) Then
+			_DebugPrint( $SUPERVISOR_EXE_NAME & " exe programi bulunamadi..." & @CRLF)
+			Exit(1)
+		EndIf
 		$iPID = Run(@WorkingDir & ".\" & $SUPERVISOR_EXE_NAME, @WorkingDir)
 		_DebugPrint( $SUPERVISOR_EXE_NAME & "prosesi " & $iPID  & " pid si ile çalistirildi..." & @CRLF)
 	EndIf
