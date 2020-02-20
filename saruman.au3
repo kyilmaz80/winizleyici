@@ -16,16 +16,16 @@
 #include <SQLite.dll.au3>
 
 ; author: korayy
-; date:   200205
+; date:   200220
 ; desc:   work logger
-; version: 1.15
+; version: 1.16
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.15.0.3
+#AutoIt3Wrapper_Res_Fileversion=1.16.0.5
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.15
+#AutoIt3Wrapper_Res_ProductVersion=1.16
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -51,6 +51,7 @@ Global Const $TRAY_ICON_NAME = "saruman.ico"
 Global Const $DEBUG = True
 Global Const $DEBUG_LOGFILE = @ScriptDir & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
 Global Const $SUPERVISOR_EXE_NAME = "gandalf.exe"
+Global Const $PROGRAM_MANAGER = "Program Manager"
 
 ; thread-like fonksiyonları calistir
 AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
@@ -99,7 +100,7 @@ Func _DBInit()
 		_SQLite_Exec(-1, "INSERT INTO Process(id, name) VALUES (1,'idle');")
 		_SQLite_Exec(-1, "INSERT INTO Window(id, title, handle, p_id) VALUES (0, 'idle', 'idle', 1);")
 		; SQL injetion korumali @UserName
-		_SQLite_Exec(-1, "INSERT INTO User(id, name) VALUES (1,'" & removeSpecialChars(@UserName) & "');")
+		_SQLite_Exec(-1, "INSERT INTO User(id, name) VALUES (1," & _SQLite_FastEscape(@UserName) & ");")
 	EndIf
 	Return $hDB
 EndFunc
@@ -204,7 +205,7 @@ Func ScreenCaptureWin($winHandle, $fileCapturePath)
 EndFunc   ;==>ScreenCaptureWin
 
 Func idleToLog()
-	; TODO: add idle record
+	; TODO: degistirilecek.
 	Local $hQuery, $idleStart
 	Local $aRow
 	; init
@@ -214,12 +215,11 @@ Func idleToLog()
 	_DebugPrint($idleStart & " Idle mode....")
 	; TODO: check last insert sql
 ;~ 	_SQLite_Query(-1, "SELECT id, w_id, idle FROM Worklog ORDER BY id DESC LIMIT 1", $hQuery)
-	_SQLite_QuerySingleRow(-1, "SELECT id, w_id, idle FROM Worklog ORDER BY id DESC LIMIT 1", $hQuery)
-;~ 	While _SQLite_FetchData($hQuery, $aRow) = $SQLITE_OK
-;~ 		$iRes_id = $aRow[0]
-;~ 		$iRes_w_id = $aRow[1]
-;~ 		$iRes_idle = $aRow[2]
-;~ 	WEnd
+	If $SQLITE_OK  <> _SQLite_QuerySingleRow(-1, "SELECT id, w_id, idle FROM Worklog ORDER BY id DESC LIMIT 1", $hQuery) Then
+		_DebugPrint("Sqlite Error: " &  _SQLite_ErrMsg())
+		Return
+	EndIf
+
 	$iRes_id = $hQuery[0]
 	$iRes_w_id = $hQuery[1]
 	$iRes_idle = $hQuery[2]
@@ -228,24 +228,42 @@ Func idleToLog()
 	If ($iRes_idle = -1 And $iRes_w_id = -1) Or _
 		($iRes_idle = 0 And $iRes_w_id <> 0) Then
 		_DebugPrint("Inserting idle data..." & @CRLF)
-		_SQLite_Exec(-1, "INSERT INTO main.Worklog(p_id, u_id, timestamp, idle) VALUES (1, 1, '" & $idleStart  &"', 1);")
+		_SQLite_Exec(-1, "INSERT INTO main.Worklog(p_id, u_id, timestamp, idle) VALUES (1, " & _DB_GetCurrentUserID() & _
+              		", " & _SQLite_FastEscape($idleStart)  &", 1);")
 	Else
 		; else update the last records' timestamp
 		If $iRes_id = -1 Then
 			_DebugPrint("Last Insert Id bulunamadi. Worklog idle guncellenemedi!")
 		Else
 			_DebugPrint("Normalizing last idle insert with update..." & @CRLF)
-			_SQLite_Exec(-1, "UPDATE main.Worklog SET timestamp='" & $idleStart   & "' WHERE id=" & $iRes_id)
+			_SQLite_Exec(-1, "UPDATE main.Worklog SET timestamp=" & _SQLite_FastEscape($idleStart) & " WHERE id=" & $iRes_id)
 		EndIf
 	EndIf
 	Return 0
+EndFunc
+
+Func _DB_GetCurrentUserID()
+	Local $aRow
+	Local $u_id
+
+	Local $userName = @UserName
+
+	If $SQLITE_OK <> _SQLite_QuerySingleRow(-1, "SELECT id FROM main.User WHERE name = "&  _SQLite_FastEscape($userName) &";", $aRow) Then
+		_DebugPrint("_DB_GetCurrentUserID Problem: Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
+	EndIf
+
+	$u_id = $aRow[0]
+	Return $u_id
 EndFunc
 
 ;~ processName proses adının  DB'deki id'sini doner
 Func _DB_GetLastProcessID($processName)
 	Local $aRow
 	Local $p_id
-	_SQLite_QuerySingleRow(-1, "SELECT id FROM main.Process WHERE name = '"& $processName &"';", $aRow)
+
+	If $SQLITE_OK  <> _SQLite_QuerySingleRow(-1, "SELECT id FROM main.Process WHERE name = "&  _SQLite_FastEscape($processName) &";", $aRow) Then
+		_DebugPrint("_DB_GetLastProcessID Problem: Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
+	EndIf
 	$p_id = $aRow[0]
 	Return $p_id
 EndFunc
@@ -254,163 +272,243 @@ EndFunc
 Func _DB_GetLastWindowID($windowName)
 	Local $aRow
 	Local $w_id
-	If $SQLITE_OK  <> _SQLite_QuerySingleRow(-1, "SELECT id FROM main.Window WHERE title = '"& removeSpecialChars($windowName) &"';", $aRow) Then
+	If $SQLITE_OK  <> _SQLite_QuerySingleRow(-1, "SELECT id FROM main.Window WHERE title = "& _SQLite_FastEscape($windowName) &";", $aRow) Then
 		_DebugPrint("_DB_GetLastWindowID Problem: Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
 	EndIf
 	$w_id = $aRow[0]
 	Return $w_id
 EndFunc
 
-;~ $windowName window adının  DB'deki son satir id'sini doner
-Func _DB_GetWindowID($windowName, $handleID)
+;~ Windows tablosundaki windowName ve handle a karsilik gelen id doner
+Func _DB_GetWindowID($windowName, $windowHandle)
 	Local $aRow
 	Local $w_id
-	If $SQLITE_OK  <> _SQLite_QuerySingleRow(-1, "SELECT id FROM main.Window WHERE title = '"& removeSpecialChars($windowName) & _
-		 "' AND handle = '" & $handleID  & "';", $aRow) Then
-		_DebugPrint("_DB_GetWindowID Problem: Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
+	If $SQLITE_OK  <> _SQLite_QuerySingleRow(-1, "SELECT id FROM main.Window WHERE title = " & _SQLite_FastEscape($windowName) & _
+		 " AND handle = " & "'"  & $windowHandle & "'"  & ";", $aRow) Then
+		_DebugPrint("_DB_GetWindowID Problem: for " & $windowHandle & " arow[0] : " & $aRow[0] & " Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
 	EndIf
 	$w_id = $aRow[0]
 	Return $w_id
 EndFunc
 
+; Worklog tablosundaki en son id'yi doner
+Func _DB_GetLastWorklogID()
+	Local $aRow
+	Local $w_id
+
+	If $SQLITE_OK  <> _SQLite_QuerySingleRow(-1, "SELECT id FROM Worklog ORDER BY id DESC LIMIT 1", $aRow) Then
+		_DebugPrint("_DB_GetLastWorklogID Problem: Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
+		Return -1
+	EndIf
+	$w_id = $aRow[0]
+	Return $w_id
+EndFunc
+
+; Process tablosundan proses adına karşılık id döner
+Func _DB_GetProcessID($processName)
+	Local $aRow
+	Local $p_id
+
+	If $SQLITE_OK  <> _SQLite_QuerySingleRow(-1, "SELECT id FROM main.Process WHERE name = '" & _
+		_SQLite_FastEscape($processName) & "';", $aRow) Then
+		_DebugPrint("_DB_GetProcessID Problem: Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
+	EndIf
+
+	$p_id = $aRow[0]
+	Return $p_id
+EndFunc
+
+; Process tablosuna kayıt ekler ve sql exec sonucu durumunu doner
+Func _DB_InsertProcess($processName)
+	Local $d = _SQLite_Exec(-1, "INSERT INTO main.Process(name) VALUES (" & _SQLite_FastEscape($processName) & ");")
+	Return $d
+EndFunc
+
+; Window tablosuna kayıt ekler ve sql exec sonucu durumunu doner
+Func _DB_InsertWindow($windowTitle, $windowHandle, $processID)
+	Local $d = _SQLite_Exec(-1, "INSERT INTO main.Window(title, handle, p_id) VALUES (" & _SQLite_FastEscape($windowTitle) & "," & _
+		"'" & $windowHandle & "'" & "," & $processID & ");")
+	Return $d
+EndFunc
+
+; Worklog tablosuna kayıt ekler ve sql exec sonucu durumunu doner
+Func _DB_InsertWorklog($processID, $windowID, $timestamp)
+	Local $d =_SQLite_Exec(-1, "INSERT INTO main.Worklog(p_id, u_id, w_id, timestamp) VALUES (" & $processID & ", " & _DB_GetCurrentUserID()  & ", " & _
+							$windowID  &", " & _SQLite_FastEscape($timestamp)  &");")
+	Return $d
+EndFunc
+
+; Worklog tablosundaki kaydı günceller ve sql exec sonucu durumunu doner
+Func _DB_UpdateWorklog($timestamp, $worklogID)
+	Local $d = _SQLite_Exec(-1, "UPDATE main.Worklog SET timestamp=" & _SQLite_FastEscape($timestamp)  & _
+			  " WHERE id=" & $worklogID)
+	Return $d
+EndFunc
+
+; Worklog tablosuna eklenecek field'ın son eklenen ile aynı olup olmadigini doner
+Func isLastWorklogRecordSame($window_id)
+	Local $is_same = True
+	Local $last_window_id = -1, $last_worklog_id = -1
+	Local $hQuery
+
+	_SQLite_QuerySingleRow(-1, "SELECT id, w_id FROM Worklog ORDER BY id DESC LIMIT 1", $hQuery)
+	$last_worklog_id = $hQuery[0]
+	$last_window_id = $hQuery[1]
+
+	_DebugPrint("window_id = " & $window_id & " last_window_id = " & $last_window_id)
+
+	If ($window_id <> $last_window_id ) Or ($last_worklog_id = -1) Or ($last_worklog_id = -1)  Then
+		$is_same = False
+	EndIf
+
+	Return $is_same
+EndFunc
+
+; Worklog tablosuna kaydı girer veya kaydı günceller
+Func _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tFinish, $sChangedOrSame)
+	; yeni kayit ise veya Son kayit degismemise
+	Local $d
+	If Not isLastWorklogRecordSame($window_id) Then
+		_DebugPrint("Inserting " & $sChangedOrSame & " window data..." & $activeWinHnd & @CRLF)
+		$d = _DB_InsertWorklog($process_id, $window_id, $tFinish)
+		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
+			_DebugPrint("SQL Insert Hatasi: @_DB_InsertWorklog  SQLITE hata kodu: " & $d)
+			Return False
+		EndIf
+	Else
+		Local $last_worklog_id = _DB_GetLastWorklogID()
+		_DebugPrint("Normalizing last " & $sChangedOrSame & " insert with update..." & $activeWinHnd & @CRLF)
+		$d = _DB_UpdateWorklog($tFinish, $last_worklog_id)
+		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
+			_DebugPrint("SQL Update Hatasi: @_DB_UpdateWorklog  SQLITE hata kodu: " & $d)
+			Return False
+		EndIf
+	EndIf
+	Return True
+EndFunc
+
 ;~ aktif pencere yakalayici ana program - periyodik olarak pencere davranislarini yakalar
 Func _CaptureWindows()
-	Local $activeWinList = WinList()
-	Local $line = ""
+	Local $sActiveTitle = WinGetTitle("[active]")
+	Local $activeWinHnd = WinGetHandle("[active]")
+	Local $iPID = WinGetProcess($activeWinHnd)
+	Local $sPIDName = _ProcessGetName($iPID)
+
+	Local $sCurrentActiveWin = removeSpecialChars($sActiveTitle)
+
 	_DebugPrint("Entering _CaptureWindows...")
 
 	; eger windows lock lanmissa veya aktif pencere yoksa idle kabul et
-	If isWinLocked() Or Not isWindowsActive($activeWinList) Then
-		If isWindowsActive = False Then _DebugPrint("Aktif pencere yok! IDLE**")
+	If isWinLocked() Or $sActiveTitle = $PROGRAM_MANAGER Then
 		If isWinLocked = True Then _DebugPrint("Windows Locked! IDLE**")
 		idleToLog()
 		Return
 	EndIf
 
-	For $i = 1 To $activeWinList[0][0]
-		; butun BLACK_LIST_WINS deki pencerelerden biriyse bakilmamasi
-		Local $sArray = StringSplit($BLACK_LIST_WINS, "|", $STR_ENTIRESPLIT)
-		If _ArraySearch($sArray, $activeWinList[$i][0]) <> -1 Then
-			Sleep(50)
-			ContinueLoop
+	; pencere boşsa işlem yapma
+	If $sActiveTitle == "" Then
+		_DebugPrint("Bos win title es geciliyor...")
+		Return
+	EndIf
+
+	; aktif olmayan pencere varsa işlem yapma
+	If Not WinActive($activeWinHnd) Then
+		_DebugPrint("Aktif olmayan " & $sActiveTitle & " title  " & $activeWinHnd & " handle es geciliyor...")
+		Return
+	EndIf
+
+	; gorulen ilk process Process tablosuna eklenir.
+	Local $d = _DB_InsertProcess($sPIDName)
+	If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
+		_DebugPrint("SQL Insert Hatasi: @_DB_InsertProcess SQLITE hata kodu: " & $d)
+		Return
+	EndIf
+
+	Local $tStart = _GetDatetime()
+	Local $process_id = _DB_GetLastProcessID($sPIDName)
+	Local $window_id
+
+	_DebugPrint("Inserting window data..." & $activeWinHnd & @CRLF)
+	Local $d = _DB_InsertWindow($sCurrentActiveWin, $activeWinHnd, $process_id)
+	If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
+		_DebugPrint("_DB_InsertWindow Insert Hatasi: @_DB_InsertWindow  SQLITE hata kodu: " & $d)
+		Return
+	EndIf
+
+
+
+	_DebugPrint("Active Win Title: " &  $sActiveTitle & " @ " & $tStart)
+	_DebugPrint("Active Win Handle: " & $activeWinHnd & " @ " & $tStart)
+
+	If $sLastActiveWin == "" Then
+		; ilk durum
+		Global $tStart = _GetDatetime()
+		_DebugPrint($tStart & $DELIM & $activeWinHnd & $DELIM & $sCurrentActiveWin & " yeni acildi ")
+		; screen capture
+		If $IS_SCREEN_CAP Then
+			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]", "") & ".jpg"
+			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 		EndIf
 
-		If $activeWinList[$i][0] <> "" And BitAND(WinGetState($activeWinList[$i][1]), $WIN_STATE_ACTIVE) Then
-			Local $sCurrentActiveWin = $activeWinList[$i][0]
-			$activeWinHnd = $activeWinList[$i][1]
-			; ekran goruntusu alma
-			If Not FileExists($SCREENSHOT_PATH) And $IS_SCREEN_CAP Then
-				DirCreate($SCREENSHOT_PATH)
-			EndIf
+		; gorulen ilk pencere ilk önce Window tablosune eklenmeye calisilir.
+;~ 		_DebugPrint("Inserting first seen window data..." & $activeWinHnd & @CRLF)
+;~ 		Local $d = _DB_InsertWindow($sCurrentActiveWin, $activeWinHnd, $process_id)
+;~ 		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
+;~ 			_DebugPrint("_DB_InsertWindow Insert Hatasi: @_DB_InsertWindow  SQLITE hata kodu: " & $d)
+;~ 			Return
+;~ 		EndIf
 
-			Local $iPID = WinGetProcess($activeWinHnd)
-			Local $sPIDName = _ProcessGetName($iPID)
-			; process yoksa process tablosuna ekle
-			_SQLite_Exec(-1, "INSERT INTO main.Process(name) VALUES ('" & $sPIDName & "');") Then
-
-			If $sLastActiveWin == "" Then
-				; ilk durum
-				Global $tStart = _GetDatetime()
-				_DebugPrint($tStart & $DELIM & $activeWinHnd & $DELIM & $sCurrentActiveWin & " yeni acildi ")
-				; screen capture
-				$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]", "") & ".jpg"
-				ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
-				$line = $tStart & $DELIM_T & @UserName & $DELIM & "START**"
-				; TODO Append
-				Local $process_id = _DB_GetLastProcessID($sPIDName)
-				_DebugPrint("Inserting first seen window data..." & $activeWinHnd & @CRLF)
-				If  $SQLITE_OK <> _SQLite_Exec(-1, "INSERT INTO main.Window(title, handle, p_id) VALUES ('" & removeSpecialChars($sCurrentActiveWin) & "'," & _
-							"'" & $activeWinHnd & "'" & "," & $process_id & ");") Then
-							_DebugPrint("SQLite ilk durum: " &  _SQLite_ErrMsg())
-				EndIf
-
-				; hangisi daha dogru?
-				;Local $window_id = _DB_GetLastWindowID(removeSpecialChars($sCurrentActiveWin))
-				Local $window_id = _DB_GetWindowID(removeSpecialChars($sCurrentActiveWin), $activeWinHnd)
-				_SQLite_Exec(-1, "INSERT INTO main.Worklog(p_id, u_id, w_id, timestamp) VALUES (" & $process_id & ", 1, " & _
-							$window_id  &", '" & $tStart  &"');")
-			ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
-				; pencere degisirse
-				Global $tFinish = _GetDatetime()
-				_DebugPrint($tFinish2 & $DELIM & $tFinish & $DELIM & " " & $sLastActiveWin & " bitti")
-				_DebugPrint(_GetDatetime() & $DELIM & $activeWinHnd & " " & $sLastActiveWin & " -> " & $sCurrentActiveWin)
-				$line = $tFinish & $DELIM_T & @UserName & $DELIM & $sLastPIDName & $DELIM & removeSpecialChars($sLastActiveWin)
-				; screen capture
-				$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tFinish, "[-:\h]", "") & ".jpg"
-				ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
-				; Add Process to ProcessTable
-
-				; Normalize Kontrol Insert|Update
-				Local $last_window_id = -1, $last_worklog_id = -1
-				Local $hQuery
-                _SQLite_QuerySingleRow(-1, "SELECT id, w_id FROM Worklog ORDER BY id DESC LIMIT 1", $hQuery)
-				$last_worklog_id = $hQuery[0]
-				$last_window_id = $hQuery[1]
-
-				; INSERT process/window
-				; en son eklenen proses id'yi bul
-				Local $process_id = _DB_GetLastProcessID($sPIDName)
-				_SQLite_Exec(-1, "INSERT INTO main.Window(title, handle, p_id) VALUES ('" & removeSpecialChars($sCurrentActiveWin) & "',"  & _
-							"'" & $activeWinHnd & "'" & "," & $process_id & ");")
-
-				;hangisi daha dogru
-				;Local $window_id =_DB_GetLastWindowID(removeSpecialChars($sCurrentActiveWin))
-				LOcal $window_id = _DB_GetWindowID(removeSpecialChars($sCurrentActiveWin), $activeWinHnd)
-
-				; yeni kayit ise veya Son kayit degismemise
-				If ($window_id <> $last_window_id ) Or ($last_worklog_id = -1) Or ($last_worklog_id = -1)  Then
-					_DebugPrint("Inserting changed window data..." & $activeWinHnd & @CRLF)
-					If $SQLITE_OK <> _SQLite_Exec(-1, "INSERT INTO main.Worklog(p_id, u_id, w_id, timestamp) VALUES ("& $process_id  &", 1," & _
-							$window_id &",'" & $tFinish  &"');")  Then
-							_DebugPrint("SQLite PencereYeni Worklog Insert: " &  _SQLite_ErrMsg())
-					EndIf
-				Else
-					_DebugPrint("Normalizing last changed insert with update..." & $activeWinHnd & @CRLF)
-					If $SQLITE_OK <> _SQLite_Exec(-1, "UPDATE main.Worklog SET timestamp='" & $tFinish   & "' WHERE id=" & $last_worklog_id) Then
-						_DebugPrint("SQLite PencereYeni Worklog Update: " &  _SQLite_ErrMsg())
-					EndIf
-				EndIf
-
-			Else
-				; pencere ayni ise
-				$tFinish2 = _GetDatetime()
-				_DebugPrint($tFinish2 & $DELIM & $sPIDName & $DELIM_T & $activeWinHnd & " " & $sLastActiveWin & " -> " & _
-							$sCurrentActiveWin & " aynen devam")
-				$iPID = WinGetProcess($activeWinHnd)
-				$sPIDName = _ProcessGetName($iPID)
-				$line = $tFinish2 & $DELIM_T & @UserName & $DELIM & $sPIDName & $DELIM & removeSpecialChars($sCurrentActiveWin)
-
-				; TODO Append/Normalize
-				; Normalize Kontrol Insert|Update
-				Local $last_window_id = -1, $last_worklog_id = -1
-				Local $hQuery
-                _SQLite_QuerySingleRow(-1, "SELECT id, w_id FROM Worklog ORDER BY id DESC LIMIT 1", $hQuery)
-				$last_worklog_id = $hQuery[0]
-				$last_window_id = $hQuery[1]
-
-				; INSERT process/window
-				Local $process_id = _DB_GetLastProcessID($sPIDName)
-				_SQLite_Exec(-1, "INSERT INTO main.Window(title, handle, p_id) VALUES ('" & removeSpecialChars($sCurrentActiveWin) & "',"  & _
-							"'" & $activeWinHnd & "'" & "," & $process_id & ");")
-				; hangisi daha dogru
-				;Local $window_id =_DB_GetLastWindowID(removeSpecialChars($sCurrentActiveWin))
-				Local $window_id = _DB_GetWindowID(removeSpecialChars($sCurrentActiveWin), $activeWinHnd)
-				; yeni kayit ise veya Son kayit degismemise
-				If ($window_id <> $last_window_id ) Or ($last_worklog_id = -1) Or ($last_worklog_id = -1)  Then
-					_DebugPrint("Inserting same window data..." & $activeWinHnd)
-					_SQLite_Exec(-1, "INSERT INTO main.Worklog(p_id, u_id, w_id, timestamp) VALUES ("& $process_id  &", 1," & _
-					$window_id &",'" & $tFinish2  &"');")
-				Else
-					_DebugPrint("Normalizing last same insert with update...")
-					_SQLite_Exec(-1, "UPDATE main.Worklog SET timestamp='" & $tFinish2   & "' WHERE id=" & $last_worklog_id)
-				EndIf
-
-			EndIf
-			$sLastActiveWin = $sCurrentActiveWin
-			$sLastActiveWinHnd = $activeWinHnd
-			$sLastPIDName = $sPIDName
+		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
+		Local $d = _DB_InsertWorklog($process_id, $window_id, $tStart)
+		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
+			_DebugPrint("_DB_InsertWorklog Insert Hatasi: @_DB_InsertWorklog  SQLITE hata kodu: " & $d)
+			Return
 		EndIf
-	Next
+	ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
+		; pencere degismisse
+		Global $tFinish = _GetDatetime()
+		; screen capture
+		If $IS_SCREEN_CAP Then
+			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tFinish, "[-:\h]", "") & ".jpg"
+			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
+		EndIf
+
+		; gorulen pencere ilk önce Window tablosune eklenmeye calisilir.
+;~ 		_DebugPrint("Inserting first seen window data..." & $activeWinHnd & @CRLF)
+;~ 		Local $d = _DB_InsertWindow($sCurrentActiveWin, $activeWinHnd, $process_id)
+;~ 		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
+;~ 			_DebugPrint("_DB_InsertWindow Insert Hatasi: @_DB_InsertWindow  SQLITE hata kodu: " & $d)
+;~ 			Return
+;~ 		EndIf
+
+		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
+		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tFinish, "changed")
+		If $b == False Then
+			_DebugPrint("_DB_InsertOrUpdateWorklog hata!")
+		EndIf
+	Else
+		; pencere ayni ise
+		$tFinish2 = _GetDatetime()
+
+		; gorulen ilk pencere ilk önce Window tablosune eklenmeye calisilir.
+;~ 		_DebugPrint("Inserting first seen window data..." & $activeWinHnd & @CRLF)
+;~ 		Local $d = _DB_InsertWindow($sCurrentActiveWin, $activeWinHnd, $process_id)
+;~ 		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
+;~ 			_DebugPrint("_DB_InsertWindow Insert Hatasi: @_DB_InsertWindow  SQLITE hata kodu: " & $d)
+;~ 			Return
+;~ 		EndIf
+
+		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
+		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tFinish2, "same")
+		If $b == False Then
+			_DebugPrint("_DB_InsertOrUpdateWorklog hata!")
+		EndIf
+	EndIf
+
+	$sLastActiveWin = $sCurrentActiveWin
+	$sLastActiveWinHnd = $activeWinHnd
+	$sLastPIDName = $sPIDName
+
 	_DebugPrint(" ")
 EndFunc   ;==>_CaptureWindows
 
