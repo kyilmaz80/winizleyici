@@ -14,16 +14,16 @@
 #include <TrayConstants.au3>
 
 ; author: korayy
-; date:   200205
+; date:   200222
 ; desc:   work logger
-; version: 1.14
+; version: 1.15
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.14.0.1
+#AutoIt3Wrapper_Res_Fileversion=1.15.0.2
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.14
+#AutoIt3Wrapper_Res_ProductVersion=1.15
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -50,6 +50,7 @@ Global Const $DEBUG = True
 Global Const $DEBUG_LOGFILE = @ScriptDir & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
 Global Const $LOG_BUFFER = False
 Global Const $SUPERVISOR_EXE_NAME = "gandalf.exe"
+Global Const $PROGRAM_MANAGER = "Program Manager"
 
 ; thread-like fonksiyonları calistir
 AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
@@ -84,6 +85,7 @@ Func _StartSupervisor($sProcessName)
 	If Not ProcessExists($sProcessName) Then
 		If Not FileExists(@WorkingDir & ".\" & $SUPERVISOR_EXE_NAME) Then
 			_DebugPrint( $SUPERVISOR_EXE_NAME & " exe programi bulunamadi..." & @CRLF)
+			Return
 		EndIf
 		$iPID = Run(@WorkingDir & ".\" & $sProcessName, @WorkingDir)
 		_DebugPrint( $sProcessName & "prosesi " & $iPID  & " pid si ile çalistirildi..." & @CRLF)
@@ -334,96 +336,93 @@ Func SyncToFile(ByRef $arr, $filePath)
 	$arr = $arr_copy
 EndFunc   ;==>SyncToFile
 
+;~ dosyaya ekleme yapar ya da gunceller
+Func _FileAppendOrNormalize($line)
+	If Not $LOG_BUFFER Then
+		If isLastLineSame($LOGFILE_PATH, $line) Then
+			NormalizeLastLine($LOGFILE_PATH, $line)
+		Else
+			AppendToLogFile($LOGFILE_PATH, $line)
+		EndIf
+	Else
+		If isLastLineSameArr($aFileArray, $line) Then
+			NormalizeLastLineArr($aFileArray, $line)
+		Else
+			AppendToLogFileArr($aFileArray, $line)
+		EndIf
+	EndIf
+EndFunc
+
 ;~ aktif pencere yakalayici ana program - periyodik olarak pencere davranislarini yakalar
 Func _CaptureWindows()
-	Local $activeWinList = WinList()
+;~ 	Local $activeWinList = WinList()
 	Local $line = ""
+	Local $sActiveTitle = WinGetTitle("[active]")
+	Local $activeWinHnd = WinGetHandle("[active]")
+	Local $sCurrentActiveWin = removeSpecialChars($sActiveTitle)
+	Local $iPID = WinGetProcess($activeWinHnd)
+	Local $sPIDName = _ProcessGetName($iPID)
+
 	_DebugPrint("Entering _CaptureWindows...")
 
 	; eger windows lock lanmissa veya aktif pencere yoksa idle kabul et
-	If isWinLocked() Or Not isWindowsActive($activeWinList) Then
+	If isWinLocked() Or $sActiveTitle = $PROGRAM_MANAGER Then
 		If isWindowsActive = False Then _DebugPrint("Aktif pencere yok! IDLE**")
 		If isWinLocked = True Then _DebugPrint("Windows Locked! IDLE**")
 		idleToLog()
 		Return
 	EndIf
 
-	For $i = 1 To $activeWinList[0][0]
-		; butun BLACK_LIST_WINS deki pencerelerden biriyse bakilmamasi
-		Local $sArray = StringSplit($BLACK_LIST_WINS, "|", $STR_ENTIRESPLIT)
-		If _ArraySearch($sArray, $activeWinList[$i][0]) <> -1 Then
-			Sleep(50)
-			ContinueLoop
+	; pencere boşsa işlem yapma
+	If $sActiveTitle == "" Then
+		_DebugPrint("Bos win title es geciliyor...")
+		Return
+	EndIf
+
+	; aktif olmayan pencere varsa işlem yapma
+	If Not WinActive($activeWinHnd) Then
+		_DebugPrint("Aktif olmayan " & $sActiveTitle & " title  " & $activeWinHnd & " handle es geciliyor...")
+		Return
+	EndIf
+
+	Local $tStart = _GetDatetime()
+
+	_DebugPrint("Active Win Title: " &  $sActiveTitle & " @ " & $tStart)
+	_DebugPrint("Active Win Handle: " & $activeWinHnd & " @ " & $tStart)
+
+	If $sLastActiveWin == "" Then
+		; ilk durum
+		_DebugPrint($tStart & $DELIM & $activeWinHnd & $DELIM & $sCurrentActiveWin & " yeni acildi ")
+		; screen capture
+		If $IS_SCREEN_CAP Then
+			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]", "") & ".jpg"
+			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
+		EndIf
+		$line = $tStart & $DELIM_T & @UserName & $DELIM & "START**"
+		AppendToLogFile($LOGFILE_PATH, $line)
+	ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
+		; pencere degismisse
+		Global $tFinish = _GetDatetime()
+		; screen capture
+		If $IS_SCREEN_CAP Then
+			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tFinish, "[-:\h]", "") & ".jpg"
+			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 		EndIf
 
-		If $activeWinList[$i][0] <> "" And BitAND(WinGetState($activeWinList[$i][1]), $WIN_STATE_ACTIVE) Then
-			Local $sCurrentActiveWin = $activeWinList[$i][0]
-			$activeWinHnd = $activeWinList[$i][1]
-			; ekran goruntusu alma
-			If Not FileExists($SCREENSHOT_PATH) Then
-				DirCreate($SCREENSHOT_PATH)
-			EndIf
+		$line = $tFinish & $DELIM_T & @UserName & $DELIM & $sLastPIDName & $DELIM & $sLastActiveWin
+		_FileAppendOrNormalize($line)
+	Else
+		; pencere ayni ise
+		$tFinish2 = _GetDatetime()
 
-			Local $iPID = WinGetProcess($activeWinHnd)
-			Local $sPIDName = _ProcessGetName($iPID)
-			; ilk durum
-			If $sLastActiveWin == "" Then
-				Global $tStart = _GetDatetime()
-				_DebugPrint($tStart & $DELIM & $activeWinHnd & $DELIM & $sCurrentActiveWin & " yeni acildi ")
-				; screen capture
-				$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]", "") & ".jpg"
-				ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
-				$line = $tStart & $DELIM_T & @UserName & $DELIM & "START**"
-;~ 				AppendToLogFileArr($aFileArray, $line)
-				AppendToLogFile($LOGFILE_PATH, $line)
-				; pencere degisirse
-			ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
-				Global $tFinish = _GetDatetime()
-				_DebugPrint($tFinish2 & $DELIM & $tFinish & $DELIM & " " & $sLastActiveWin & " bitti")
-				_DebugPrint(_GetDatetime() & $DELIM & $activeWinHnd & " " & $sLastActiveWin & " -> " & $sCurrentActiveWin)
-				$line = $tFinish & $DELIM_T & @UserName & $DELIM & $sLastPIDName & $DELIM & removeSpecialChars($sLastActiveWin)
-				; screen capture
-				$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tFinish, "[-:\h]", "") & ".jpg"
-				ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
-				If Not $LOG_BUFFER Then
-					If isLastLineSame($LOGFILE_PATH, $line) Then
-						NormalizeLastLine($LOGFILE_PATH, $line)
-					Else
-						AppendToLogFile($LOGFILE_PATH, $line)
-					EndIf
-				Else
-					If isLastLineSameArr($aFileArray, $line) Then
-						NormalizeLastLineArr($aFileArray, $line)
-					Else
-						AppendToLogFileArr($aFileArray, $line)
-					EndIf
-				EndIf
-				; pencere ayni ise
-			Else
-				$tFinish2 = _GetDatetime()
-				_DebugPrint($tFinish2 & $DELIM & $sPIDName & $DELIM_T & $activeWinHnd & " " & $sLastActiveWin & " -> " & $sCurrentActiveWin & " aynen devam")
-				$iPID = WinGetProcess($activeWinHnd)
-				$sPIDName = _ProcessGetName($iPID)
-				$line = $tFinish2 & $DELIM_T & @UserName & $DELIM & $sPIDName & $DELIM & removeSpecialChars($sCurrentActiveWin)
-				If Not $LOG_BUFFER Then
-					If isLastLineSame($LOGFILE_PATH, $line) Then
-						NormalizeLastLine($LOGFILE_PATH, $line)
-					Else
-						AppendToLogFile($LOGFILE_PATH, $line)
-					EndIf
-				Else
-					If isLastLineSameArr($aFileArray, $line) Then
-						NormalizeLastLineArr($aFileArray, $line)
-					Else
-						AppendToLogFileArr($aFileArray, $line)
-					EndIf
-				EndIf
-			EndIf
-			$sLastActiveWin = $sCurrentActiveWin
-			$sLastActiveWinHnd = $activeWinHnd
-			$sLastPIDName = $sPIDName
-		EndIf
-	Next
+		$line = $tFinish2 & $DELIM_T & @UserName & $DELIM & $sPIDName & $DELIM & $sCurrentActiveWin
+		_FileAppendOrNormalize($line)
+	EndIf
+
+	$sLastActiveWin = $sCurrentActiveWin
+	$sLastActiveWinHnd = $activeWinHnd
+	$sLastPIDName = $sPIDName
+
 	_DebugPrint(" ")
 	SyncToFile($aFileArray, $LOGFILE_PATH)
 EndFunc   ;==>_CaptureWindows
