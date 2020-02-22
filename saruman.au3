@@ -16,9 +16,9 @@
 #include <SQLite.dll.au3>
 
 ; author: korayy
-; date:   200220
+; date:   200222
 ; desc:   work logger
-; version: 1.16
+; version: 1.17
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
@@ -61,7 +61,7 @@ Func _Main()
 	setTray()
 	_DBInit()
 	While 1
-;~ 		_StartSupervisor($SUPERVISOR_EXE_NAME)
+		_StartSupervisor($SUPERVISOR_EXE_NAME)
 		Sleep(500)
 	WEnd
 EndFunc   ;==>_Main
@@ -126,6 +126,7 @@ Func _StartSupervisor($sProcessName)
 	If Not ProcessExists($sProcessName) Then
 		If Not FileExists(@WorkingDir & ".\" & $SUPERVISOR_EXE_NAME) Then
 			_DebugPrint( $SUPERVISOR_EXE_NAME & " exe programi bulunamadi..." & @CRLF)
+			Return
 		EndIf
 		$iPID = Run(@WorkingDir & ".\" & $sProcessName, @WorkingDir)
 		_DebugPrint( $sProcessName & "prosesi " & $iPID  & " pid si ile çalistirildi..." & @CRLF)
@@ -435,28 +436,17 @@ Func _CaptureWindows()
 		Return
 	EndIf
 
-
-
 	_DebugPrint("Active Win Title: " &  $sActiveTitle & " @ " & $tStart)
 	_DebugPrint("Active Win Handle: " & $activeWinHnd & " @ " & $tStart)
 
 	If $sLastActiveWin == "" Then
 		; ilk durum
-		Global $tStart = _GetDatetime()
 		_DebugPrint($tStart & $DELIM & $activeWinHnd & $DELIM & $sCurrentActiveWin & " yeni acildi ")
 		; screen capture
 		If $IS_SCREEN_CAP Then
 			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]", "") & ".jpg"
 			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 		EndIf
-
-		; gorulen ilk pencere ilk önce Window tablosune eklenmeye calisilir.
-;~ 		_DebugPrint("Inserting first seen window data..." & $activeWinHnd & @CRLF)
-;~ 		Local $d = _DB_InsertWindow($sCurrentActiveWin, $activeWinHnd, $process_id)
-;~ 		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
-;~ 			_DebugPrint("_DB_InsertWindow Insert Hatasi: @_DB_InsertWindow  SQLITE hata kodu: " & $d)
-;~ 			Return
-;~ 		EndIf
 
 		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
 		Local $d = _DB_InsertWorklog($process_id, $window_id, $tStart)
@@ -473,14 +463,6 @@ Func _CaptureWindows()
 			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 		EndIf
 
-		; gorulen pencere ilk önce Window tablosune eklenmeye calisilir.
-;~ 		_DebugPrint("Inserting first seen window data..." & $activeWinHnd & @CRLF)
-;~ 		Local $d = _DB_InsertWindow($sCurrentActiveWin, $activeWinHnd, $process_id)
-;~ 		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
-;~ 			_DebugPrint("_DB_InsertWindow Insert Hatasi: @_DB_InsertWindow  SQLITE hata kodu: " & $d)
-;~ 			Return
-;~ 		EndIf
-
 		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
 		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tFinish, "changed")
 		If $b == False Then
@@ -489,14 +471,6 @@ Func _CaptureWindows()
 	Else
 		; pencere ayni ise
 		$tFinish2 = _GetDatetime()
-
-		; gorulen ilk pencere ilk önce Window tablosune eklenmeye calisilir.
-;~ 		_DebugPrint("Inserting first seen window data..." & $activeWinHnd & @CRLF)
-;~ 		Local $d = _DB_InsertWindow($sCurrentActiveWin, $activeWinHnd, $process_id)
-;~ 		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
-;~ 			_DebugPrint("_DB_InsertWindow Insert Hatasi: @_DB_InsertWindow  SQLITE hata kodu: " & $d)
-;~ 			Return
-;~ 		EndIf
 
 		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
 		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tFinish2, "same")
