@@ -18,14 +18,14 @@
 ; author: korayy
 ; date:   200222
 ; desc:   work logger
-; version: 1.17
+; version: 1.18
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.16.0.5
+#AutoIt3Wrapper_Res_Fileversion=1.18.0.1
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.16
+#AutoIt3Wrapper_Res_ProductVersion=1.18
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -90,7 +90,8 @@ Func _DBInit()
 	                     "p_id	INTEGER NOT NULL, " & _
 	                     "u_id	INTEGER NOT NULL, " & _
 						 "w_id 	INTEGER DEFAULT 0, " & _
-						 "timestamp	TEXT NOT NULL, " & _
+						 "start_date TEXT NOT NULL, " & _
+						 "end_date TEXT NOT NULL," & _
 	                     "idle	INTEGER DEFAULT 0, " & _
 						 "processed	INTEGER DEFAULT 0," & _
 						 "FOREIGN KEY(p_id) REFERENCES Process(id), " & _
@@ -333,15 +334,16 @@ Func _DB_InsertWindow($windowTitle, $windowHandle, $processID)
 EndFunc
 
 ; Worklog tablosuna kayıt ekler ve sql exec sonucu durumunu doner
-Func _DB_InsertWorklog($processID, $windowID, $timestamp)
-	Local $d =_SQLite_Exec(-1, "INSERT INTO main.Worklog(p_id, u_id, w_id, timestamp) VALUES (" & $processID & ", " & _DB_GetCurrentUserID()  & ", " & _
-							$windowID  &", " & _SQLite_FastEscape($timestamp)  &");")
+Func _DB_InsertWorklog($processID, $windowID, $start_date, $end_date)
+	Local $d =_SQLite_Exec(-1, "INSERT INTO main.Worklog(p_id, u_id, w_id, start_date, end_date ) VALUES (" & _
+							$processID & ", " & _DB_GetCurrentUserID()  & ", " & _
+							$windowID  &", " & _SQLite_FastEscape($start_date) & ", " &  _SQLite_FastEscape($end_date)  & ");")
 	Return $d
 EndFunc
 
 ; Worklog tablosundaki kaydı günceller ve sql exec sonucu durumunu doner
-Func _DB_UpdateWorklog($timestamp, $worklogID)
-	Local $d = _SQLite_Exec(-1, "UPDATE main.Worklog SET timestamp=" & _SQLite_FastEscape($timestamp)  & _
+Func _DB_UpdateWorklog($tFinish, $worklogID)
+	Local $d = _SQLite_Exec(-1, "UPDATE main.Worklog SET end_date=" & _SQLite_FastEscape($tFinish)  & _
 			  " WHERE id=" & $worklogID)
 	Return $d
 EndFunc
@@ -366,12 +368,12 @@ Func isLastWorklogRecordSame($window_id)
 EndFunc
 
 ; Worklog tablosuna kaydı girer veya kaydı günceller
-Func _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tFinish, $sChangedOrSame)
+Func _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tStart, $tFinish, $sChangedOrSame)
 	; yeni kayit ise veya Son kayit degismemise
 	Local $d
 	If Not isLastWorklogRecordSame($window_id) Then
 		_DebugPrint("Inserting " & $sChangedOrSame & " window data..." & $activeWinHnd & @CRLF)
-		$d = _DB_InsertWorklog($process_id, $window_id, $tFinish)
+		$d = _DB_InsertWorklog($process_id, $window_id, $tStart, $tFinish)
 		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
 			_DebugPrint("SQL Insert Hatasi: @_DB_InsertWorklog  SQLITE hata kodu: " & $d)
 			Return False
@@ -449,7 +451,7 @@ Func _CaptureWindows()
 		EndIf
 
 		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
-		Local $d = _DB_InsertWorklog($process_id, $window_id, $tStart)
+		Local $d = _DB_InsertWorklog($process_id, $window_id, $tStart, $tStart)
 		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
 			_DebugPrint("_DB_InsertWorklog Insert Hatasi: @_DB_InsertWorklog  SQLITE hata kodu: " & $d)
 			Return
@@ -464,7 +466,7 @@ Func _CaptureWindows()
 		EndIf
 
 		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
-		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tFinish, "changed")
+		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tStart, $tFinish, "changed")
 		If $b == False Then
 			_DebugPrint("_DB_InsertOrUpdateWorklog hata!")
 		EndIf
@@ -473,7 +475,7 @@ Func _CaptureWindows()
 		$tFinish2 = _GetDatetime()
 
 		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
-		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tFinish2, "same")
+		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $activeWinHnd, $tStart, $tFinish2, "same")
 		If $b == False Then
 			_DebugPrint("_DB_InsertOrUpdateWorklog hata!")
 		EndIf
