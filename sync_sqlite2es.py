@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import sqlite3
 from sqlite3 import Error
 import json
@@ -7,6 +9,16 @@ from collections import OrderedDict
 import uuid
 import logging
 import os
+
+"""
+SQlite veri tabanindaki gorunum tablosundaki
+veriyi okur ve ElasticSearch'e gonderir.
+"""
+
+__author__ = "Koray YILMAZ, Can KAYA"
+__copyright__ = "Copyright 2020, WinIzleyici Projesi - Veri Aktarim"
+__version__ = "1.0.1"
+
 
 #sqlite parameters
 SQLITEDB_PATH = "worklog.db"
@@ -48,12 +60,12 @@ ES_MAPPINGS =  {
             "userName": {
                 "type": "text"
             },
-            "createDate": {
-                "type": "date",
+            "startDate": {
+                "type": "text",
                 "format": "yyyy-MM-dd HH:mm:ss"
             },
             "endDate": {
-                "type": "date",
+                "type": "text",
                 "format": "yyyy-MM-dd HH:mm:ss"
             },
             "durationasMin": {
@@ -248,7 +260,7 @@ def gen_data(data_rows):
     for data in data_rows:
         yield {
             "id": str(uuid.uuid4()),
-            "_index": "test",
+            "_index": INDEX_NAME,
             "_type": "_doc",
             "_source": data,
         }
