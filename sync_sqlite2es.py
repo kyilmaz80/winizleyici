@@ -2,10 +2,8 @@
 
 import sqlite3
 from sqlite3 import Error
-import json
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk, streaming_bulk
-from collections import OrderedDict
 import uuid
 import logging
 import os
@@ -17,7 +15,7 @@ veriyi okur ve ElasticSearch'e gonderir.
 
 __author__ = "Koray YILMAZ, Can KAYA"
 __copyright__ = "Copyright 2020, WinIzleyici Projesi - Veri Aktarim"
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 
 #sqlite parameters
@@ -127,7 +125,7 @@ def create_connection(db_file):
 Sqlite view siler
 """
 def dropView(conn):
-    cur = conn.execute("DROP VIEW ?", (SQLLITE_VIEW_NAME,))
+    cur = conn.execute("DROP VIEW ?", (SQLITE_VIEW_NAME,))
     conn.commit()
     return cur
 
@@ -150,7 +148,6 @@ def select_sqlitedata(conn, record_limit):
                     FROM """ +  SQLITE_VIEW_NAME + """ LIMIT ?"""
     
     cur = conn.cursor()
-    row = []
     try:
         cur.execute(SELECT_SQL, (record_limit,))
     except Error as e:
