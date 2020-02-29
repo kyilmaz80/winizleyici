@@ -18,12 +18,12 @@
 ; author: korayy
 ; date:   200222
 ; desc:   work logger
-; version: 1.19
+; version: 1.20
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.19.0.1
+#AutoIt3Wrapper_Res_Fileversion=1.19.0.2
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
 #AutoIt3Wrapper_Res_ProductVersion=1.19
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
@@ -102,21 +102,6 @@ Func _DBInit()
 		_SQLite_Exec(-1, "INSERT INTO Window(id, title, handle, p_id) VALUES (0, 'idle', 'idle', 1);")
 		; SQL injetion korumali @UserName
 		_SQLite_Exec(-1, "INSERT INTO User(id, name) VALUES (1," & _SQLite_FastEscape(@UserName) & ");")
-		_SQLite_Exec(-1, "CREATE VIEW vw_workdata " & _
-					"AS SELECT  w.id as id, p.name as processName, " & _
-					"wi.title as windowTitle, u.name as userName,"  & _
-					"julianday(w.start_date) as startDate, " & _
-					"julianday(w.end_date) as endDate, " & _
-					"(julianday(w.end_date)- julianday(w.start_date))*24*60 as durationasMin " & _
-				"FROM  " & _
-					"Worklog w " & _
-					"INNER JOIN Process p ON w.p_id=p.id " & _
-					"INNER JOIN Window wi ON w.w_id=wi.id " & _
-					"INNER JOIN User u ON w.u_id=u.id " & _
-				"WHERE " & _
-					"w.processed=0 " & _
-				"ORDER BY " & _
-					"w.id asc ")
 	EndIf
 	Return $hDB
 EndFunc
