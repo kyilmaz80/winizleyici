@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import uuid
+import logging
+import os
 import sqlite3
 from sqlite3 import Error
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk, streaming_bulk
-import uuid
-import logging
-import os
+from datetime import datetime
 
 """
 SQlite veri tabanindaki gorunum tablosundaki
@@ -15,7 +16,7 @@ veriyi okur ve ElasticSearch'e gonderir.
 
 __author__ = "Koray YILMAZ, Can KAYA"
 __copyright__ = "Copyright 2020, WinIzleyici Projesi - Veri Aktarim"
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 #sqlite parameters
@@ -28,7 +29,7 @@ USERNAME = "elasticsearch"
 PASSWORD = "SecureElast1c"
 PORT = "8080"
 INDEX_NAME = "test-ky"
-DOCUMENT_TYPE = "_doc"
+DOCUMENT_TYPE = "message"
 
 """sqllite viewden aldığımuz kolonları dictionary objesine
 çevrilirken verilen key degerleri"""
@@ -43,31 +44,34 @@ ES_KEYS = [
     "durationasMin"
 ]
 
-ES_MAPPINGS =  {
+ES_REQ_BODY = {
+    "settings": {
+        "number_of_shards": 1,
+        "number_of_replicas": 1
+    },
     "mappings": {
-        "properties": {
-            "worklogId": {
-                "type": "integer"
-            },
-            "processName": {
-                "type": "text"
-            },
-            "windowTitle": {
-                "type": "text"
-            },
-            "userName": {
-                "type": "text"
-            },
-            "startDate": {
-                "type": "text",
-                "format": "yyyy-MM-dd HH:mm:ss"
-            },
-            "endDate": {
-                "type": "text",
-                "format": "yyyy-MM-dd HH:mm:ss"
-            },
-            "durationasMin": {
-                "type": "integer"
+        DOCUMENT_TYPE: {
+            "properties": {
+                "processName": {
+                    "type": "text"
+                },
+                "windowTitle": {
+                    "type": "text"
+                },
+                "userName": {
+                    "type": "text"
+                },
+                "startDate": {
+                    "type": "date",
+                    "format": "yyyy-MM-dd HH:mm:ss"
+                },
+                "endDate": {
+                    "type": "date",
+                    "format": "yyyy-MM-dd HH:mm:ss"
+                },
+                "durationasMin": {
+                    "type": "integer"
+                }
             }
         }
     }
@@ -208,9 +212,9 @@ elasticsearch index i mapping i ile olusturur
 def create_elastic_index(es, index_name):
     logger = logging.getLogger(__name__)
     created = False
-    mapping = ES_MAPPINGS
+    request_body = ES_REQ_BODY
     try:
-        es.indices.create(index=index_name, ignore=400, body=mapping)
+        es.indices.create(index=index_name, ignore=400, body=request_body)
         logger.info("%s indeksi ilk defa olusturuluyor...", index_name)
         created = True
     except  Exception as e:
@@ -233,7 +237,7 @@ def delete_elastic_index(es, index_name):
 """
 elasticsearch e veri ekler
 """
-def insert_to_elasticsearch(es, index_name, data_json, doc_type):
+def insert_to_elasticsearch(es, index_name, data_json, doc_type=DOCUMENT_TYPE):
     logger = logging.getLogger(__name__)
     res = {}
     res["result"] = ""
@@ -255,11 +259,15 @@ json formatinda ES bulk icin iterator doner
 """
 def gen_data(data_rows):
     for data in data_rows:
+        """worklogId yi ES'de field olarak gondermemek
+        icin eklendi."""
+        data_es = data.copy()
+        data_es.pop("worklogId")
         yield {
             "id": str(uuid.uuid4()),
             "_index": INDEX_NAME,
-            "_type": "_doc",
-            "_source": data,
+            "_type": DOCUMENT_TYPE,
+            "_source": data_es,
         }
 
 
