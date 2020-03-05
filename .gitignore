@@ -1,0 +1,5 @@
+desktop.ini
+dist/worklog.db
+dist/*.log
+dist/*.txt
+dist/log/*
