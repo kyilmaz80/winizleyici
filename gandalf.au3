@@ -2,9 +2,18 @@
 #include <FileConstants.au3>
 
 ; author: korayy
-; date:   200205
+; date:   200305
 ; desc:   saruman process checker
-; version: 1.2
+; version: 1.3
+
+#Region ;**** Directives ****
+#AutoIt3Wrapper_Res_ProductName=Gandalf
+#AutoIt3Wrapper_Res_Description=Supervizor
+#AutoIt3Wrapper_Res_Fileversion=1.3.0.1
+#AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
+#AutoIt3Wrapper_Res_ProductVersion=1.3
+#AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
+#EndRegion ;**** Directives ****
 
 #NoTrayIcon
 Const $POLL_TIME_MS = 1000
