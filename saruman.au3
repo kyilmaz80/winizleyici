@@ -16,22 +16,22 @@
 #include <SQLite.dll.au3>
 
 ; author: korayy
-; date:   200222
+; date:   200305
 ; desc:   work logger
-; version: 1.20
+; version: 1.21
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.19.0.2
+#AutoIt3Wrapper_Res_Fileversion=1.21.0.1
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.19
+#AutoIt3Wrapper_Res_ProductVersion=1.21
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
 #EndRegion ;**** Directives ****
 
-Const $POLL_TIME_MS = 2000
+Const $POLL_TIME_MS = 10000
 ; _CaptureWindows degiskenler
 Global $sLastActiveWin = ""
 Global $activeWinHnd = ""
