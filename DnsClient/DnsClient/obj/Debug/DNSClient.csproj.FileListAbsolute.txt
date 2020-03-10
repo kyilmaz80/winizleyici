@@ -1,0 +1,5 @@
+\\Mac\Home\Desktop\DNSClient\DNSClient\bin\Debug\DNSClient.exe
+\\Mac\Home\Desktop\DNSClient\DNSClient\bin\Debug\DNSClient.pdb
+\\Mac\Home\Desktop\DNSClient\DNSClient\obj\Debug\DNSClient.exe
+\\Mac\Home\Desktop\DNSClient\DNSClient\obj\Debug\DNSClient.pdb
+\\Mac\Home\Desktop\DNSClient\DNSClient\obj\Debug\DNSClient.csprojAssemblyReference.cache
