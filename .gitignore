@@ -3,3 +3,6 @@ dist/worklog.db
 dist/*.log
 dist/*.txt
 dist/log/*
+sqlite3.dll
+*.log
+worklog.db
