@@ -2,12 +2,17 @@
 #include <Process.au3>
 #include <File.au3>
 
+
+#Region ;**** Directives ****
+#AutoIt3Wrapper_OutFile="dist\saruman-test.exe"
+#EndRegion ;**** Directives ****
+
 Func Main()
 	Local $LOGFILE_PATH = ".\worklog.txt"
-	Local $N = 10
-	Sleep(2000)
+	Local $N = 5
+	Sleep(10000)
 	$iPID = Run(@WorkingDir & ".\saruman.exe", @WorkingDir)
-	CreateExampleWindows($N)
+	CreateExampleWindows($N, 15000)
 	Sleep(5000)
 	ProcessClose($iPID)
 
@@ -39,11 +44,11 @@ Func Example($sTitle)
 	Return $hGUI
 EndFunc   ;==>Example
 
-Func CreateExampleWindows($countWin)
+Func CreateExampleWindows($countWin, $wait)
 	For $i = 1 To $countWin
 		Local $hWnd = Example("Example" & $i)
 		WinActivate($hWnd)
-		Sleep(7000)
+		Sleep($wait)
 		GUIDelete($hWnd)
 	Next
 EndFunc   ;==>CreateExampleWindows
