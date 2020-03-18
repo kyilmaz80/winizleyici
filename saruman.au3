@@ -18,14 +18,14 @@
 ; author: korayy
 ; date:   200317
 ; desc:   work logger
-; version: 1.23
+; version: 1.24
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.23.0.1
+#AutoIt3Wrapper_Res_Fileversion=1.24.0.2
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.23
+#AutoIt3Wrapper_Res_ProductVersion=1.24
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -49,7 +49,7 @@ Global $IS_SCREEN_CAP = False
 Global $aFileArray[0] = []
 ;~ Global Const $FSYNCBUFFER = 5
 Global Const $TRAY_ICON_NAME = "saruman.ico"
-Global Const $DEBUG = True
+Global $DEBUG = True
 Global Const $DEBUG_LOGFILE = @ScriptDir & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
 Global Const $SUPERVISOR_EXE_NAME = "gandalf.exe"
 Global $bSupervisorExists = True
@@ -154,7 +154,8 @@ EndFunc
 
 ; text whitelisting
 Func removeSpecialChars($str)
-	Return StringRegExpReplace($str, "[^0-9,a-z,A-Z, ,\-,.,:,;,\h,\v]", "")
+	; Return StringRegExpReplace($str, "[^0-9,a-z,A-Z, ,\-,.,:,;,\h,\v]", "")
+	Return StringRegExpReplace($str, "\r\n|\t", "")
 EndFunc   ;==>removeSpecialChars
 
 ; windows rdp kontrol
@@ -293,8 +294,8 @@ Func _DB_GetWindowID($windowName, $windowHandle)
 	Local $aRow
 	Local $w_id
 	If $SQLITE_OK  <> _SQLite_QuerySingleRow(-1, "SELECT id FROM main.Window WHERE title = " & _SQLite_FastEscape($windowName) & _
-		 " AND handle = " & "'"  & $windowHandle & "'"  & ";", $aRow) Then
-		_DebugPrint("_DB_GetWindowID Problem: for " & $windowHandle & " arow[0] : " & $aRow[0] & " Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
+		 " AND handle = " & "'" & $windowHandle & "'" & ";", $aRow) Then
+		_DebugPrint("_DB_GetWindowID Problem: for " & $windowHandle & " " & $windowName & " arow[0] : " & $aRow[0] & " Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
 	EndIf
 	$w_id = $aRow[0]
 	Return $w_id
