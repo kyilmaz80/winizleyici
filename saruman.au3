@@ -18,14 +18,14 @@
 ; author: korayy
 ; date:   200317
 ; desc:   work logger
-; version: 1.24
+; version: 1.25
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.24.0.2
+#AutoIt3Wrapper_Res_Fileversion=1.25.0.1
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.24
+#AutoIt3Wrapper_Res_ProductVersion=1.25
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -108,6 +108,7 @@ Func _DBInit()
 		_SQLite_Exec(-1, "CREATE TABLE DNSClient ( " & _
 							"pid	INTEGER NOT NULL DEFAULT 0, " & _
 							"query_name	TEXT, " & _
+							"parent_pid	INTEGER," & _
 							"time_created	TEXT );")
 	    ; idle veri ekleme
 		_SQLite_Exec(-1, "INSERT INTO Process(id, name) VALUES (1,'idle');")
@@ -473,7 +474,8 @@ Func _CaptureWindows()
 			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 		EndIf
 
-		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
+		; $window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
+		$window_id = _DB_GetLastWindowID($sCurrentActiveWin)
 		Local $d = _DB_InsertWorklog($process_id, $iPID, $window_id, $tStart, $tStart, 0)
 		If $d <> $SQLITE_OK  And $d <> $SQLITE_CONSTRAINT Then
 			_DebugPrint("_DB_InsertWorklog Insert Hatasi: @_DB_InsertWorklog  SQLITE hata kodu: " & $d)
@@ -488,7 +490,8 @@ Func _CaptureWindows()
 			ScreenCaptureWin($activeWinHnd, $screenShotFilePath)
 		EndIf
 
-		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
+		; $window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
+		$window_id = _DB_GetLastWindowID($sCurrentActiveWin)
 		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $iPID, $activeWinHnd, $tStart, $tFinish, "changed", 0)
 		If $b == False Then
 			_DebugPrint("_DB_InsertOrUpdateWorklog hata!")
@@ -497,7 +500,8 @@ Func _CaptureWindows()
 		; pencere ayni ise
 		$tFinish2 = _GetDatetime()
 
-		$window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
+		; $window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
+		$window_id = _DB_GetLastWindowID($sCurrentActiveWin)
 		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $iPID, $activeWinHnd, $tStart, $tFinish2, "same", 0)
 		If $b == False Then
 			_DebugPrint("_DB_InsertOrUpdateWorklog hata!")
