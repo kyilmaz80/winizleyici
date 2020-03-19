@@ -14,42 +14,39 @@
 #include <TrayConstants.au3>
 #include <SQLite.au3>
 #include <SQLite.dll.au3>
+#include <GetOpt.au3> ; UDF v1.3
 
 ; author: korayy
-; date:   200317
+; date:   200319
 ; desc:   work logger
-; version: 1.25
+; version: 1.26
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.25.0.1
+#AutoIt3Wrapper_Res_Fileversion=1.26.0.2
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.25
+#AutoIt3Wrapper_Res_ProductVersion=1.26
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
 #AutoIt3Wrapper_OutFile="dist\saruman.exe"
 #EndRegion ;**** Directives ****
 
-Const $POLL_TIME_MS = 10000
+Global $POLL_TIME_MS = 10000
 ; _CaptureWindows degiskenler
 Global $sLastActiveWin = ""
 Global $activeWinHnd = ""
 Global $sLastActiveWinHnd = ""
-Global $bWindowChild = 0
 Global $tFinish2 = 0
 Global $sLastPIDName = ""
 Global Const $BLACK_LIST_WINS = "Program Manager|"
-Global Const $DBFILE_PATH = @WorkingDir & "\worklog.db"
-Global Const $DELIM = ","
-Global Const $DELIM_T = ";"
-Global Const $SCREENSHOT_PATH = @WorkingDir & "\caps\" & @YEAR & @MON & @MDAY
+Global $DBFILE_PATH = @WorkingDir & "\worklog.db"
+Global $SCREENSHOT_PATH = @WorkingDir & "\caps\" & @YEAR & @MON & @MDAY
 Global $IS_SCREEN_CAP = False
-Global $aFileArray[0] = []
 ;~ Global Const $FSYNCBUFFER = 5
 Global Const $TRAY_ICON_NAME = "saruman.ico"
-Global $DEBUG = True
+Global $DEBUG = False
 Global Const $DEBUG_LOGFILE = @ScriptDir & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
 Global Const $SUPERVISOR_EXE_NAME = "gandalf.exe"
 Global $bSupervisorExists = True
@@ -64,6 +61,7 @@ AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
 
 ; busy wait ana program
 Func _Main()
+	_InputInit()
 	setTray()
 	_DBInit()
 	While 1
@@ -71,6 +69,69 @@ Func _Main()
 		Sleep(500)
 	WEnd
 EndFunc   ;==>_Main
+
+Func _InputInit()
+	Local $aOpts[9][3] = [ _
+        ['-v', '--verbose', True], _
+        ['-d', '--database', $DBFILE_PATH], _
+		['-t', '--time', $POLL_TIME_MS], _
+		['-s', '--screenshots', True], _
+        ['-h', '--help', True] _
+    ]
+	Local $dFlag = False, $vFlag = False, $tFlag = False, $sFlag = False
+	Local $dArg, $tArg
+
+	_GetOpt_Set($aOpts) ; Set options.
+	If 0 < $GetOpt_Opts[0] Then ; If there are any options...
+        While 1
+            ; Get the next option passing a string with valid options.
+            $sOpt = _GetOpt('vdtsh')
+			If Not $sOpt Then ExitLoop
+			Switch $sOpt
+				Case '?' ; Unknown options come here. @extended is set to $E_GETOPT_UNKNOWN_OPTION
+                Case ':' ; Options with missing required arguments come here. @extended is set to $E_GETOPT_MISSING_ARGUMENT
+				Case 'v'
+                    $vFlag = True
+                Case 'd'
+					$dFlag = True
+					$dArg = $GetOpt_Arg
+				case 't'
+					$tFlag = True
+					$tArg = $GetOpt_Arg
+				case 's'
+					$sFlag = True
+                Case 'h'
+                    MsgBox(0, 'saruman.exe', 'User behaviour logger' & @CRLF & _
+                            'Usage: ' & @CRLF  & _
+							' saruman.exe --help -h' & @CRLF  & _
+							' saruman.exe --verbose -v' & @CRLF  & _
+							' saruman.exe --time -t' & @CRLF  & _
+							' saruman.exe --screenshots -s'  & @CRLF  & _
+							' saruman.exe --database -d'   & @CRLF & _
+							'Options: ' & @CRLF  & _
+							' --help -h	            Shows help win' & @CRLF & _
+							' --verbose -v			Debug log to file' & @CRLF & _
+							' --time=<ms>			Wait time in ms [default: 10000ms]' & @CRLF & _
+							' --database=<path>		SQLite DB path'  & @CRLF & _
+							' --screenshots=<True>	Save screenshots or not')
+                    Exit
+			EndSwitch
+		WEnd
+
+		If $dFlag Then $DBFILE_PATH = $dArg
+		If $vFlag Then $DEBUG = True
+		If $tFlag Then $POLL_TIME_MS = $tArg
+		If $sFlag Then $IS_SCREEN_CAP = True
+	EndIf
+EndFunc
+
+; tray icon degistirir
+Func setTray()
+	;#NoTrayIcon
+	Opt("TrayMenuMode", 3) ; no default menu (Paused/Exit)
+	TraySetState($TRAY_ICONSTATE_SHOW) ; Show the tray menu.
+	TraySetIcon($TRAY_ICON_NAME, 99)
+EndFunc   ;==>setTray
 
 Func _DBInit()
 	Local $hDB;
@@ -129,13 +190,6 @@ Func _DebugPrint($sMsgString)
 	EndIf
 EndFunc   ;==>_DebugPrint
 
-; tray icon degistirir
-Func setTray()
-	;#NoTrayIcon
-	Opt("TrayMenuMode", 3) ; no default menu (Paused/Exit)
-	TraySetState($TRAY_ICONSTATE_SHOW) ; Show the tray menu.
-	TraySetIcon($TRAY_ICON_NAME, 99)
-EndFunc   ;==>setTray
 
 ;~ surekli supervizor process'e bakar
 Func _StartSupervisor($sProcessName)
@@ -467,7 +521,7 @@ Func _CaptureWindows()
 
 	If $sLastActiveWin == "" Then
 		; ilk durum
-		_DebugPrint($tStart & $DELIM & $activeWinHnd & $DELIM & $sCurrentActiveWin & " yeni acildi ")
+		_DebugPrint($tStart & " " & $activeWinHnd & " " & $sCurrentActiveWin & " yeni acildi ")
 		; screen capture
 		If $IS_SCREEN_CAP Then
 			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]", "") & ".jpg"
