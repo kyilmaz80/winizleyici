@@ -17,16 +17,16 @@
 #include <GetOpt.au3> ; UDF v1.3
 
 ; author: korayy
-; date:   200319
+; date:   200320
 ; desc:   work logger
-; version: 1.27
+; version: 1.28
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.27.0.7
+#AutoIt3Wrapper_Res_Fileversion=1.28.0.31
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.27
+#AutoIt3Wrapper_Res_ProductVersion=1.28
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -44,12 +44,12 @@ Global Const $BLACK_LIST_WINS = "Program Manager|"
 Global $DBFILE_PATH = @WorkingDir & "\worklog.db"
 Global $SCREENSHOT_PATH = @WorkingDir & "\caps\" & @YEAR & @MON & @MDAY
 Global $IS_SCREEN_CAP = False
-;~ Global Const $FSYNCBUFFER = 5
 Global Const $TRAY_ICON_NAME = "saruman.ico"
 Global $DEBUG = False
 Global Const $DEBUG_LOGFILE = @ScriptDir & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
 Global Const $SUPERVISOR_EXE_NAME = "gandalf.exe"
 Global $bSupervisorExists = True
+Global $bCheckSupervisor = True
 Global Const $PROGRAM_MANAGER = "Program Manager"
 Global Const $IDLE_W_ID = 0
 Global Const $IDLE_PROCESS_ID = 1
@@ -58,16 +58,19 @@ Global Const $IDLE_WIN_HANDLE = "idle"
 Global Const $SETTINGS_PATH = EnvGet("APPDATA") & "\saruman"
 Global Const $SETTINGS_FILE = $SETTINGS_PATH & "\settings.ini"
 
-; thread-like fonksiyonları calistir
-AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
-
-; busy wait ana program
+; ana program
 Func _Main()
 	_InputInit()
+	_DebugPrint("Registering _CaptureWindow() for " & $POLL_TIME_MS & " ms" & @CRLF)
+	AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
+	; thread-like fonksiyonları calistir
 	setTray()
 	_DBInit()
+	; busy wait ve gandalf kontrol
 	While 1
-		_StartSupervisor($SUPERVISOR_EXE_NAME)
+		If $bCheckSuperVisor Then
+			_StartSupervisor($SUPERVISOR_EXE_NAME)
+		EndIf
 		Sleep(500)
 	WEnd
 EndFunc   ;==>_Main
@@ -75,44 +78,68 @@ EndFunc   ;==>_Main
 ; getopt tarzi giris opsiyonlari alir ve set eder
 Func _InputInit()
 
+	; komut satir parametreleri verilmemisse default degerler.
+	If 0 = $CmdLine[0] Then
+		Return
+	EndIf
+	_DebugPrint("Parsing the command line options...")
 	If FileExists($SETTINGS_FILE) Then
 		_DebugPrint($SETTINGS_FILE & " ini read ..." & @CRLF)
 		$DBFILE_PATH = IniRead($SETTINGS_FILE, "General", "DBFILE_PATH", $DBFILE_PATH)
 		$POLL_TIME_MS = IniRead($SETTINGS_FILE, "General", "POLL_TIME_MS", $POLL_TIME_MS)
 	EndIf
 
-	Local $aOpts[9][3] = [ _
+	Local $aOpts[7][3] = [ _
 			['-v', '--verbose', True], _
 			['-d', '--database', $DBFILE_PATH], _
 			['-t', '--time', $POLL_TIME_MS], _
-			['-s', '--screenshots', True], _
+			['-s', '--screenshots', 1], _
 			['-i', '--init', True], _
+			['-c', '--checksupervisor', 1], _
 			['-h', '--help', True] _
 			]
 	Local $dFlag = False, $vFlag = False, $tFlag = False, $sFlag = False, $iFlag = False
-	Local $dArg, $tArg
+	Local $cFlag = False
+	Local $dArg, $tArg, $cArg
+	Local $errFlag = False
+	Local $msg = ""
 
 	_GetOpt_Set($aOpts) ; Set options.
 	If 0 < $GetOpt_Opts[0] Then ; If there are any options...
 		While 1
 			; Get the next option passing a string with valid options.
-			$sOpt = _GetOpt('vdtsih')
+			$sOpt = _GetOpt('vdtsich')
 			If Not $sOpt Then ExitLoop
 			Switch $sOpt
 				Case '?' ; Unknown options come here. @extended is set to $E_GETOPT_UNKNOWN_OPTION
 				Case ':' ; Options with missing required arguments come here. @extended is set to $E_GETOPT_MISSING_ARGUMENT
 				Case 'v'
 					$vFlag = True
+					$msg &= "verbose flag given "
 				Case 'd'
 					$dFlag = True
 					$dArg = $GetOpt_Arg
+					$msg &= "database_path: " & $dArg & " "
 				Case 't'
 					$tFlag = True
 					$tArg = $GetOpt_Arg
+					$msg &= "time_ms: " & $tArg & " "
+					If VarGetType(int($tArg)) <> "Int32" Then
+						_DebugPrint("error in t option")
+						$errFlag = True
+					EndIf
 				Case 's'
 					$sFlag = True
 				Case 'i'
 					$iFlag = True
+				Case 'c'
+					$cFlag = True
+					$cArg = Int($GetOpt_Arg)
+					$msg &= "checksupervisor: " & $cArg & " "
+					If  Not ($cArg = 0 Or $cArg = 1) Then
+						_DebugPrint("error in c option")
+						$errFlag = True
+					EndIf
 				Case 'h'
 					MsgBox(0, 'saruman.exe', 'User behaviour logger' & @CRLF & _
 							'Usage: ' & @CRLF & _
@@ -122,20 +149,29 @@ Func _InputInit()
 							' saruman.exe --screenshots -s' & @CRLF & _
 							' saruman.exe --database -d' & @CRLF & _
 							' saruman.exe --init -i' & @CRLF & _
+							' saruman.exe --checksupervisor -c' & @CRLF & _
 							'Options: ' & @CRLF & _
-							' --help -h	            Shows help win' & @CRLF & _
-							' --verbose -v			Debug log to file' & @CRLF & _
+							' --help	            Shows help win' & @CRLF & _
+							' --verbose      		Debug log to file' & @CRLF & _
 							' --time=<ms>			Wait time in ms [default: 10000ms]' & @CRLF & _
 							' --database=<path>		SQLite DB path' & @CRLF & _
-							' --screenshots=<True>	Save screenshots or not' & @CRLF & _
+							' --screenshots=<0|1>	Save screenshots or not' & @CRLF & _
+							' --checksupervisor=<0|1>  Check supervisor gandalf or not' & @CRLF & _
 							' --init=<True>			Initialize DB')
 					Exit
 			EndSwitch
 		WEnd
+
+		If $errFlag Then
+			MsgBox($MB_ICONERROR, 'saruman.exe', 'wrong usage!')
+			Exit
+		EndIf
+
 		If Not FileExists($SETTINGS_FILE) Then
 			_DebugPrint($SETTINGS_PATH & " olusturuluyor..." & @CRLF)
 			DirCreate($SETTINGS_PATH)
 		EndIf
+
 		If $dFlag Then
 			$DBFILE_PATH = $dArg
 			IniWrite($SETTINGS_FILE, "General", "DBFILE_PATH", $DBFILE_PATH)
@@ -145,11 +181,19 @@ Func _InputInit()
 			$POLL_TIME_MS = $tArg
 			IniWrite($SETTINGS_FILE, "General", "POLL_TIME_MS", $POLL_TIME_MS)
 		EndIf
+		If $cFlag Then
+			If $cArg = 1 Then
+				$bCheckSupervisor = True
+			Else
+				$bCheckSupervisor = False
+			EndIf
+		EndIf
 		If $sFlag Then $IS_SCREEN_CAP = True
 		If $iFlag Then
 			_DBInit($iFlag)
 			Exit
 		EndIf
+		_DebugPrint("Given options: " & $msg)
 	EndIf
 EndFunc   ;==>_InputInit
 
@@ -177,6 +221,7 @@ Func _DBInit($reinit = False)
 			_DebugPrint($DBFILE_PATH & " sifirlaniyor..." & @CRLF)
 			FileMove($DBFILE_PATH, $DBFILE_PATH & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC)
 		EndIf
+		_DebugPrint($DBFILE_PATH & " db aciliyor..." & @CRLF)
 		$hDB = _SQLite_Open($DBFILE_PATH)
 		If @error Then Exit MsgBox(16, "SQLite Hata", "Veri tabanı açılamadı!")
 		; TODO create tables
@@ -508,10 +553,11 @@ Func _CaptureWindows()
 	Local $activeWinHnd = WinGetHandle("[active]")
 	Local $iPID = WinGetProcess($activeWinHnd)
 	Local $sPIDName = _ProcessGetName($iPID)
+	Local $tStart = _GetDatetime()
 
 	Local $sCurrentActiveWin = removeSpecialChars($sActiveTitle)
 
-	_DebugPrint("Entering _CaptureWindows...")
+	_DebugPrint("Entering _CaptureWindows " & $tStart)
 
 	; eger windows lock lanmissa veya aktif pencere yoksa idle kabul et
 	If isWinLocked() Or $sActiveTitle = $PROGRAM_MANAGER Then
@@ -539,7 +585,7 @@ Func _CaptureWindows()
 		Return
 	EndIf
 
-	Local $tStart = _GetDatetime()
+
 	Local $process_id = _DB_GetLastProcessID($sPIDName)
 	Local $window_id
 
