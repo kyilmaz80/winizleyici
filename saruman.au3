@@ -19,14 +19,14 @@
 ; author: korayy
 ; date:   200320
 ; desc:   work logger
-; version: 1.28
+; version: 1.29
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.28.0.31
+#AutoIt3Wrapper_Res_Fileversion=1.29.0.1
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.28
+#AutoIt3Wrapper_Res_ProductVersion=1.29
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -48,6 +48,7 @@ Global Const $TRAY_ICON_NAME = "saruman.ico"
 Global $DEBUG = False
 Global Const $DEBUG_LOGFILE = @ScriptDir & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
 Global Const $SUPERVISOR_EXE_NAME = "gandalf.exe"
+Global Const $SARUMAN_EXE_NAME = "saruman.exe"
 Global $bSupervisorExists = True
 Global $bCheckSupervisor = True
 Global Const $PROGRAM_MANAGER = "Program Manager"
@@ -60,6 +61,7 @@ Global Const $SETTINGS_FILE = $SETTINGS_PATH & "\settings.ini"
 
 ; ana program
 Func _Main()
+	saruman_exit()
 	_InputInit()
 	_DebugPrint("Registering _CaptureWindow() for " & $POLL_TIME_MS & " ms" & @CRLF)
 	AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
@@ -196,6 +198,21 @@ Func _InputInit()
 		_DebugPrint("Given options: " & $msg)
 	EndIf
 EndFunc   ;==>_InputInit
+
+; saruman.exe prosesi varsa exit
+Func saruman_exit()
+	Local $aSarumanList = ProcessList($SARUMAN_EXE_NAME)
+	Local $numOfSaruman = 1
+
+	If IsArray($aSarumanList) Then
+		$numOfSaruman = $aSarumanList[0][0]
+	EndIf
+
+	If $numOfSaruman > 1 Then
+		_DebugPrint("Saruman exe count > 1 Exiting...")
+		Exit
+	EndIf
+EndFunc
 
 ; tray icon degistirir
 Func setTray()
