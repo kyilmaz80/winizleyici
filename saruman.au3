@@ -19,14 +19,14 @@
 ; author: korayy
 ; date:   200320
 ; desc:   work logger
-; version: 1.29
+; version: 1.30
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.29.0.1
+#AutoIt3Wrapper_Res_Fileversion=1.30.0.2
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.29
+#AutoIt3Wrapper_Res_ProductVersion=1.30
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -58,6 +58,9 @@ Global Const $IDLE_PID = 0
 Global Const $IDLE_WIN_HANDLE = "idle"
 Global Const $SETTINGS_PATH = EnvGet("APPDATA") & "\saruman"
 Global Const $SETTINGS_FILE = $SETTINGS_PATH & "\settings.ini"
+Global $aLastMousePos[2]
+Global $aMousePositions[0][2]
+Global $idleTimeOut = 5 * 60 * 1000  ; 5000 seconds = 5 min
 
 ; ana program
 Func _Main()
@@ -564,6 +567,19 @@ Func _DB_InsertOrUpdateWorklog($window_id, $process_id, $pid, $activeWinHnd, $tS
 	Return True
 EndFunc   ;==>_DB_InsertOrUpdateWorklog
 
+;~ mouse durumu yerini set eder
+Func setLastMousePos()
+	$aLastMousePos = MouseGetPos()
+	Local $t = _GetDatetime(True)
+	_DebugPrint("Mouse position timestamp: " & $t & ", pos: " & $aLastMousePos[0] & "," & $aLastMousePos[1])
+	_ArrayAdd($aMousePositions, $aLastMousePos[0] & "," & $aLastMousePos[1] & ";" & $t, 0, ";")
+	If @error Then _DebugPrint("array add failure at setLastMousePos()")
+EndFunc
+
+Func checkUserState()
+
+EndFunc
+
 ;~ aktif pencere yakalayici ana program - periyodik olarak pencere davranislarini yakalar
 Func _CaptureWindows()
 	Local $sActiveTitle = WinGetTitle("[active]")
@@ -602,7 +618,6 @@ Func _CaptureWindows()
 		Return
 	EndIf
 
-
 	Local $process_id = _DB_GetLastProcessID($sPIDName)
 	Local $window_id
 
@@ -619,6 +634,10 @@ Func _CaptureWindows()
 	If $sLastActiveWin == "" Then
 		; ilk durum
 		_DebugPrint($tStart & " " & $activeWinHnd & " " & $sCurrentActiveWin & " yeni acildi ")
+
+		; mouse durum
+		setLastMousePos()
+
 		; screen capture
 		If $IS_SCREEN_CAP Then
 			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]", "") & ".jpg"
@@ -635,6 +654,10 @@ Func _CaptureWindows()
 	ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
 		; pencere degismisse
 		Global $tFinish = _GetDatetime()
+
+		; mouse durum
+		setLastMousePos()
+
 		; screen capture
 		If $IS_SCREEN_CAP Then
 			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tFinish, "[-:\h]", "") & ".jpg"
@@ -650,6 +673,9 @@ Func _CaptureWindows()
 	Else
 		; pencere ayni ise
 		$tFinish2 = _GetDatetime()
+
+		; mouse durum
+		setLastMousePos()
 
 		; $window_id = _DB_GetWindowID($sCurrentActiveWin, $activeWinHnd)
 		$window_id = _DB_GetLastWindowID($sCurrentActiveWin)
