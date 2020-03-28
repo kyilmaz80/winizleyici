@@ -19,14 +19,14 @@
 ; author: korayy
 ; date:   200320
 ; desc:   work logger
-; version: 1.31
+; version: 1.32
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.31.0.27
+#AutoIt3Wrapper_Res_Fileversion=1.32.0.5
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.31
+#AutoIt3Wrapper_Res_ProductVersion=1.32
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -55,7 +55,7 @@ Global Const $DEBUG_LOGFILE = @ScriptDir & "\saruman_" & @MON & @MDAY & @YEAR & 
 Global Const $SUPERVISOR_EXE_NAME = "gandalf.exe"
 Global Const $SARUMAN_EXE_NAME = "saruman.exe"
 Global $bSupervisorExists = True
-Global $bCheckSupervisor = True
+Global $bCheckSupervisor = False
 Global Const $PROGRAM_MANAGER = "Program Manager"
 ; db initial values enums
 Global Const $IDLE_W_ID = 0
@@ -68,9 +68,10 @@ Global Const $SETTINGS_FILE = $SETTINGS_PATH & "\settings.ini"
 ; mouse track settings
 Global $MOUSE_TRACK = True
 Global $aLastMousePos[2]
-Global $oMousePositionsDict =  ObjCreate("Scripting.Dictionary")
+Global $oMousePositionsDict = ObjCreate("Scripting.Dictionary")
 Global Const $MAX_IDLE_MINS = 1
 Global Const $IDLE_TIMEOUT_SECS = $MAX_IDLE_MINS * 60  ; 60 seconds = 1 min
+Global Const $BUSY_WAIT_MSECS = 500
 
 ; ana program
 Func _Main()
@@ -80,13 +81,14 @@ Func _Main()
 	AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
 	; thread-like fonksiyonları calistir
 	setTray()
-	_DBInit()
+	Local $hnd = _DBInit()
+	If $hnd = -1 Then Exit
 	; busy wait ve gandalf kontrol
 	While 1
-		If $bCheckSuperVisor Then
+		If $bCheckSupervisor Then
 			_StartSupervisor($SUPERVISOR_EXE_NAME)
 		EndIf
-		Sleep(500)
+		Sleep($BUSY_WAIT_MSECS)
 	WEnd
 EndFunc   ;==>_Main
 
@@ -139,7 +141,7 @@ Func _InputInit()
 					$tFlag = True
 					$tArg = $GetOpt_Arg
 					$msg &= "time_ms: " & $tArg & " "
-					If VarGetType(int($tArg)) <> "Int32" Then
+					If VarGetType(Int($tArg)) <> "Int32" Then
 						_DebugPrint("error in t option")
 						$errFlag = True
 					EndIf
@@ -151,7 +153,7 @@ Func _InputInit()
 					$cFlag = True
 					$cArg = Int($GetOpt_Arg)
 					$msg &= "checksupervisor: " & $cArg & " "
-					If  Not ($cArg = 0 Or $cArg = 1) Then
+					If Not ($cArg = 0 Or $cArg = 1) Then
 						_DebugPrint("error in c option")
 						$errFlag = True
 					EndIf
@@ -206,6 +208,7 @@ Func _InputInit()
 		If $sFlag Then $IS_SCREEN_CAP = True
 		If $iFlag Then
 			_DBInit($iFlag)
+			_DBCreate()
 			Exit
 		EndIf
 		_DebugPrint("Given options: " & $msg)
@@ -225,7 +228,7 @@ Func saruman_exit()
 		_DebugPrint("Saruman exe count > 1 Exiting...")
 		Exit
 	EndIf
-EndFunc
+EndFunc   ;==>saruman_exit
 
 ; tray icon degistirir
 Func setTray()
@@ -235,61 +238,61 @@ Func setTray()
 	TraySetIcon($TRAY_ICON_NAME, 99)
 EndFunc   ;==>setTray
 
+; DB open
 Func _DBInit($reinit = False)
 	Local $hDB ;
 	_SQLite_Startup()
 	_DebugPrint("_SQLite_LibVersion=" & _SQLite_LibVersion() & @CRLF)
 	If @error Then Exit MsgBox(16, "SQLite Hata", "SQLite.dll yuklenemedi!")
-
-	If FileExists($DBFILE_PATH) And $reinit = False Then
-		_DebugPrint($DBFILE_PATH & " aciliyor..." & @CRLF)
+	If FileExists($DBFILE_PATH) Or $reinit = True Then
+		If $reinit = False Then
+			_DebugPrint($DBFILE_PATH & " aciliyor..." & @CRLF)
+		EndIf
 		$hDB = _SQLite_Open($DBFILE_PATH)
 		If @error Then Exit MsgBox(16, "SQLite Hata", "Veri tabanı açılamadı!")
 	Else
-		If FileExists($DBFILE_PATH) And $reinit Then
-			; rename old db to a new one
-			_DebugPrint($DBFILE_PATH & " sifirlaniyor..." & @CRLF)
-			FileMove($DBFILE_PATH, $DBFILE_PATH & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC)
-		EndIf
-		_DebugPrint($DBFILE_PATH & " db aciliyor..." & @CRLF)
-		$hDB = _SQLite_Open($DBFILE_PATH)
-		If @error Then Exit MsgBox(16, "SQLite Hata", "Veri tabanı açılamadı!")
-		; TODO create tables
-		; Yeni tablo olustur Process
-		_SQLite_Exec(-1, "CREATE TABLE IF NOT EXISTS User(id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(id));")
-		_SQLite_Exec(-1, "CREATE TABLE IF NOT EXISTS Process(id INTEGER NOT NULL, name TEXT NOT NULL UNIQUE, PRIMARY KEY(id));")
-		_SQLite_Exec(-1, "CREATE TABLE Window (id	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " & _
-				"title	TEXT NOT NULL UNIQUE, handle TEXT, p_id INTEGER NOT NULL, " & _
-				"FOREIGN KEY(p_id) REFERENCES Process(id));")
-		_SQLite_Exec(-1, "CREATE TABLE IF NOT EXISTS Worklog ( " & _
-				"id	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " & _
-				"p_id	INTEGER NOT NULL, " & _
-				"pid	INTEGER NOT NULL DEFAULT 0," & _
-				"u_id	INTEGER NOT NULL, " & _
-				"w_id 	INTEGER DEFAULT 0, " & _
-				"start_date TEXT NOT NULL, " & _
-				"end_date TEXT NOT NULL," & _
-				"idle	INTEGER DEFAULT 0, " & _
-				"processed	INTEGER DEFAULT 0," & _
-				"dns_processed	INTEGER DEFAULT 0," & _
-				"FOREIGN KEY(p_id) REFERENCES Process(id), " & _
-				"FOREIGN KEY(u_id) REFERENCES User(id), " & _
-				"FOREIGN KEY(w_id) REFERENCES Window(id));")
-		_SQLite_Exec(-1, "CREATE TABLE DNSClient ( " & _
-				"pid	INTEGER NOT NULL DEFAULT 0, " & _
-				"query_name	TEXT, " & _
-				"parent_pid	INTEGER," & _
-				"time_created	TEXT );")
-		; idle veri ekleme
-		_SQLite_Exec(-1, "INSERT INTO Process(id, name) VALUES (1,'idle');")
-		_SQLite_Exec(-1, "INSERT INTO Window(id, title, handle, p_id) VALUES (" & $IDLE_W_ID & ", " & _
-				_SQLite_FastEscape($IDLE_WIN_HANDLE) & ", " & _SQLite_FastEscape($IDLE_WIN_HANDLE) & _
-				", " & $IDLE_PROCESS_ID & ");")
-		; @UserName ekleme
-		_SQLite_Exec(-1, "INSERT INTO User(id, name) VALUES (1," & _SQLite_FastEscape(@UserName) & ");")
+		_DebugPrint($DBFILE_PATH & " db dosyasi bulunamadi..." & @CRLF)
+		$hDB = -1
 	EndIf
 	Return $hDB
 EndFunc   ;==>_DBInit
+
+; DB Tablo Init
+Func _DBCreate()
+	; Yeni tablo olustur Process
+	_DebugPrint($DBFILE_PATH & " db dosyasi olusturuluyor...")
+	_SQLite_Exec(-1, "CREATE TABLE IF NOT EXISTS User(id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(id));")
+	_SQLite_Exec(-1, "CREATE TABLE IF NOT EXISTS Process(id INTEGER NOT NULL, name TEXT NOT NULL UNIQUE, PRIMARY KEY(id));")
+	_SQLite_Exec(-1, "CREATE TABLE Window (id	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " & _
+			"title	TEXT NOT NULL UNIQUE, handle TEXT, p_id INTEGER NOT NULL, " & _
+			"FOREIGN KEY(p_id) REFERENCES Process(id));")
+	_SQLite_Exec(-1, "CREATE TABLE IF NOT EXISTS Worklog ( " & _
+			"id	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " & _
+			"p_id	INTEGER NOT NULL, " & _
+			"pid	INTEGER NOT NULL DEFAULT 0," & _
+			"u_id	INTEGER NOT NULL, " & _
+			"w_id 	INTEGER DEFAULT 0, " & _
+			"start_date TEXT NOT NULL, " & _
+			"end_date TEXT NOT NULL," & _
+			"idle	INTEGER DEFAULT 0, " & _
+			"processed	INTEGER DEFAULT 0," & _
+			"dns_processed	INTEGER DEFAULT 0," & _
+			"FOREIGN KEY(p_id) REFERENCES Process(id), " & _
+			"FOREIGN KEY(u_id) REFERENCES User(id), " & _
+			"FOREIGN KEY(w_id) REFERENCES Window(id));")
+	_SQLite_Exec(-1, "CREATE TABLE DNSClient ( " & _
+			"pid	INTEGER NOT NULL DEFAULT 0, " & _
+			"query_name	TEXT, " & _
+			"parent_pid	INTEGER," & _
+			"time_created	TEXT );")
+	; idle veri ekleme
+	_SQLite_Exec(-1, "INSERT INTO Process(id, name) VALUES (1,'idle');")
+	_SQLite_Exec(-1, "INSERT INTO Window(id, title, handle, p_id) VALUES (" & $IDLE_W_ID & ", " & _
+			_SQLite_FastEscape($IDLE_WIN_HANDLE) & ", " & _SQLite_FastEscape($IDLE_WIN_HANDLE) & _
+			", " & $IDLE_PROCESS_ID & ");")
+	; @UserName ekleme
+	_SQLite_Exec(-1, "INSERT INTO User(id, name) VALUES (1," & _SQLite_FastEscape(@UserName) & ");")
+EndFunc   ;==>_DBCreate
 
 ;debug helper function
 Func _DebugPrint($sMsgString)
@@ -389,8 +392,8 @@ Func ScreenCaptureWin($winHandle, $fileCapturePath)
 	_GDIPlus_Shutdown()
 EndFunc   ;==>ScreenCaptureWin
 
-Func idleToLog($window_id=$IDLE_W_ID, $process_id=$IDLE_PROCESS_ID, $pid=$IDLE_PID, _
-			   $activeWinHnd=$IDLE_WIN_HANDLE, $tStart=_GetDatetime())
+Func idleToLog($window_id = $IDLE_W_ID, $process_id = $IDLE_PROCESS_ID, $pid = $IDLE_PID, _
+		$activeWinHnd = $IDLE_WIN_HANDLE, $tStart = _GetDatetime())
 	Local $hQuery
 	Local $aRow
 	Local $tFinish
@@ -495,7 +498,7 @@ Func _DB_GetWorklogCount()
 	EndIf
 	$w_count = $aRow[0]
 	Return $w_count
-EndFunc
+EndFunc   ;==>_DB_GetWorklogCount
 
 ; Worklog tablosundaki en son idle durumu doner
 Func _DB_GetLastWorklogIdle()
@@ -505,11 +508,11 @@ Func _DB_GetLastWorklogIdle()
 
 	$ret = _SQLite_QuerySingleRow(-1, "SELECT idle FROM Worklog ORDER BY id DESC LIMIT 1", $aRow)
 	_DebugPrint("_DB_GetLastWorklogIdle ret: " & $ret & " query res: " & VarGetType($aRow))
-	If Not($SQLITE_OK = $ret or $SQLITE_DONE = $ret) Then
+	If Not ($SQLITE_OK = $ret Or $SQLITE_DONE = $ret) Then
 		_DebugPrint("_DB_GetLastWorklogIdle Problem: Error Code: " & _SQLite_ErrCode() & "Error Message: " & _SQLite_ErrMsg)
 		Return -1
 	EndIf
-	If IsArray($aRow) and UBound($aRow) > 0 Then
+	If IsArray($aRow) And UBound($aRow) > 0 Then
 		$w_id = $aRow[0]
 	EndIf
 	Return $w_id
@@ -555,7 +558,7 @@ EndFunc   ;==>_DB_InsertWorklog
 ; Worklog tablosundaki kaydı günceller ve sql exec sonucu durumunu doner
 Func _DB_UpdateWorklog($tFinish, $worklogID, $idle = 0)
 	Local $d = _SQLite_Exec(-1, "UPDATE main.Worklog SET end_date=" & _SQLite_FastEscape($tFinish) & _
-			", idle=" & $idle &   " WHERE id=" & $worklogID)
+			", idle=" & $idle & " WHERE id=" & $worklogID)
 	Return $d
 EndFunc   ;==>_DB_UpdateWorklog
 
@@ -571,7 +574,7 @@ Func isLastWorklogRecordSame($window_id)
 
 	_DebugPrint("window_id = " & $window_id & " last_window_id = " & $last_window_id)
 
-	If  $window_id <> $last_window_id Or $last_worklog_id = -1 Or $last_worklog_id = -1 Then
+	If $window_id <> $last_window_id Or $last_worklog_id = -1 Or $last_worklog_id = -1 Then
 		$is_same = False
 	EndIf
 
@@ -615,7 +618,7 @@ Func setLastMousePos()
 
 	; _ArrayAdd($aMousePositions, $aLastMousePos[0] & "," & $aLastMousePos[1] & ";" & $t, 0, ";")
 	If @error Then _DebugPrint("array add failure at setLastMousePos()")
-EndFunc
+EndFunc   ;==>setLastMousePos
 
 ; mouse hareketine bakıp idle durumu olup olmadigina bakar
 Func getMouseIdleState()
@@ -629,17 +632,17 @@ Func getMouseIdleState()
 	$lastTimestamp = $oMousePositionsDict.Keys[$oMousePositionsDict.Count - 1]
 	$beforeTimestamp = $lastTimestamp - $IDLE_TIMEOUT_SECS
 	If $oMousePositionsDict.Exists($beforeTimestamp) Then
-	_DebugPrint("Pos of mouse at " & $beforeTimestamp & " : " & $oMousePositionsDict.Item($beforeTimestamp) & @CRLF)
-	If $oMousePositionsDict.Item($beforeTimestamp) <> $oMousePositionsDict.Item($lastTimestamp) Then
-		_DebugPrint("mouse pos different before " & $beforeTimestamp & " secs => not idle" & @CRLF)
-	Else
-		_DebugPrint("mouse pos same before " & $beforeTimestamp & " secs => idle")
-		$bMouseIdle = True
+		_DebugPrint("Pos of mouse at " & $beforeTimestamp & " : " & $oMousePositionsDict.Item($beforeTimestamp) & @CRLF)
+		If $oMousePositionsDict.Item($beforeTimestamp) <> $oMousePositionsDict.Item($lastTimestamp) Then
+			_DebugPrint("mouse pos different before " & $beforeTimestamp & " secs => not idle" & @CRLF)
+		Else
+			_DebugPrint("mouse pos same before " & $beforeTimestamp & " secs => idle")
+			$bMouseIdle = True
+		EndIf
+		Return $bMouseIdle
 	EndIf
-	Return $bMouseIdle
-EndIf
 
-EndFunc
+EndFunc   ;==>getMouseIdleState
 
 ;~ aktif pencere yakalayici ana program - periyodik olarak pencere davranislarini yakalar
 Func _CaptureWindows()
@@ -760,7 +763,7 @@ Func _CaptureWindows()
 				; TODO: bir önceki pencerenin bitişi bu pencerenin başlangıcı?
 				idleToLog($window_id, $process_id, $iPID, $activeWinHnd, $tFinish2)
 				Return
-			ElseIf $ret = False and $lastIdle = 1 Then
+			ElseIf $ret = False And $lastIdle = 1 Then
 				_DebugPrint("lastIdle = 1 oldugundan _DB_InsertOrUpdateWorklog es geciliyor...")
 				Return
 			EndIf
