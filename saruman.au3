@@ -17,16 +17,16 @@
 #include <GetOpt.au3> ; UDF v1.3
 
 ; author: korayy
-; date:   200320
+; date:   200328
 ; desc:   work logger
-; version: 1.32
+; version: 1.33
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.32.0.5
+#AutoIt3Wrapper_Res_Fileversion=1.33.0.8
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.32
+#AutoIt3Wrapper_Res_ProductVersion=1.33
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -39,6 +39,7 @@ Global $sLastActiveWin = ""
 Global $activeWinHnd = ""
 Global $sLastActiveWinHnd = ""
 Global $tFinish2 = 0
+Global $tLastFinish = ""
 Global $sLastPIDName = ""
 Global Const $BLACK_LIST_WINS = "Program Manager|"
 ; DB file settings
@@ -704,6 +705,8 @@ Func _CaptureWindows()
 		; ilk durum
 		_DebugPrint($tStart & " " & $activeWinHnd & " " & $sCurrentActiveWin & " yeni acildi ")
 
+		$tLastFinish = $tStart
+
 		; mouse durum
 		If $MOUSE_TRACK Then
 			setLastMousePos()
@@ -724,8 +727,12 @@ Func _CaptureWindows()
 		EndIf
 	ElseIf $sLastActiveWin <> "" And $sLastActiveWin <> $sCurrentActiveWin Then
 		; pencere degismisse
-		_DebugPrint($activeWinHnd & " pencere degisti...")
+		_DebugPrint($tStart & " " & $activeWinHnd & " pencere degisti...")
 		Global $tFinish = _GetDatetime()
+
+		;If $bWindowSame <> True Then
+		$tStart = $tLastFinish
+		;EndIf
 
 		; mouse durum
 		If $MOUSE_TRACK Then
@@ -744,10 +751,14 @@ Func _CaptureWindows()
 		If $b = False Then
 			_DebugPrint("_DB_InsertOrUpdateWorklog hata!")
 		EndIf
+		$tLastFinish = $tFinish
 	Else
 		; pencere ayni ise
-		_DebugPrint($activeWinHnd & " penceresi aynen devam...")
+
+		_DebugPrint($tStart & " " & $activeWinHnd & " penceresi aynen devam...")
 		$tFinish2 = _GetDatetime()
+
+		$tStart = $tLastFinish
 
 		$window_id = _DB_GetLastWindowID($sCurrentActiveWin)
 
@@ -762,6 +773,7 @@ Func _CaptureWindows()
 			If $ret Then
 				; TODO: bir önceki pencerenin bitişi bu pencerenin başlangıcı?
 				idleToLog($window_id, $process_id, $iPID, $activeWinHnd, $tFinish2)
+				$tLastFinish = $tFinish2
 				Return
 			ElseIf $ret = False And $lastIdle = 1 Then
 				_DebugPrint("lastIdle = 1 oldugundan _DB_InsertOrUpdateWorklog es geciliyor...")
@@ -773,6 +785,7 @@ Func _CaptureWindows()
 		If $b = False Then
 			_DebugPrint("_DB_InsertOrUpdateWorklog hata!")
 		EndIf
+		$tLastFinish = $tFinish2
 	EndIf
 
 	$sLastActiveWin = $sCurrentActiveWin
