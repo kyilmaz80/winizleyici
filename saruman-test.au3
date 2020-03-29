@@ -21,6 +21,11 @@ Func Main()
 		FileDelete($TESTDB_FILE)
 	EndIf
 
+	; Init DB
+	$CMD = "saruman.exe -d:" & $TESTDB_FILE & " --init"
+	_DebugPrint($CMD & " " & @WorkingDir & " DB Init yapiliyor...")
+	$iPID = Run($CMD, @WorkingDir)
+
 	WinMinimizeAll()
 
 	Local $time1 = _GetDatetime()
@@ -37,7 +42,7 @@ Func Main()
 	EndIf
 
 ;~ 	$CMD = "saruman.exe -d:" & $TESTDB_FILE & " -t:" & $POLL_TIME_MS  & " -c:0 -v"
-    $CMD = "saruman.exe -d:" & $TESTDB_FILE & " -c:0 -v"
+    $CMD = "saruman.exe -d:" & $TESTDB_FILE & " -v"
 
 ;~ 	$CMD = "C:\Users\Koray\Documents\kodlar\autoit\sqlite_branch\winizleyici\dist\saruman.exe -d:" & $TESTDB_FILE & _
 ;~ 			" -t:" & $POLL_TIME_MS  & " -c:0 -v"
