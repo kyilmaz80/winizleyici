@@ -24,7 +24,7 @@
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.34.0.5
+#AutoIt3Wrapper_Res_Fileversion=1.34.0.6
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
 #AutoIt3Wrapper_Res_ProductVersion=1.34
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
@@ -263,7 +263,7 @@ Func _DBInit($reinit = False)
 			_DebugPrint($DBFILE_PATH & " aciliyor..." & @CRLF)
 		EndIf
 		; db create icin sql file kontrol
-		If Not FileExists($SQLFILE_PATH) Then
+		If Not FileExists($SQLFILE_PATH) and $reinit = True Then
 			_DebugPrint($SQLFILE_PATH & " sql dosyasi bulunamadi!")
 		Exit 1
 	EndIf
