@@ -17,16 +17,16 @@
 #include <GetOpt.au3> ; UDF v1.3
 
 ; author: korayy
-; date:   200328
+; date:   200330
 ; desc:   work logger
-; version: 1.33
+; version: 1.34
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.33.0.8
+#AutoIt3Wrapper_Res_Fileversion=1.34.0.5
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.33
+#AutoIt3Wrapper_Res_ProductVersion=1.34
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -44,6 +44,7 @@ Global $sLastPIDName = ""
 Global Const $BLACK_LIST_WINS = "Program Manager|"
 ; DB file settings
 Global $DBFILE_PATH = @WorkingDir & "\worklog.db"
+Global $SQLFILE_PATH = @WorkingDir & "\db.sql"
 ; screenshot settings
 Global $SCREENSHOT_PATH = @WorkingDir & "\caps\" & @YEAR & @MON & @MDAY
 Global $IS_SCREEN_CAP = False
@@ -107,18 +108,19 @@ Func _InputInit()
 		$POLL_TIME_MS = IniRead($SETTINGS_FILE, "General", "POLL_TIME_MS", $POLL_TIME_MS)
 	EndIf
 
-	Local $aOpts[7][3] = [ _
+	Local $aOpts[8][3] = [ _
 			['-v', '--verbose', True], _
 			['-d', '--database', $DBFILE_PATH], _
+			['-q', '--sql', $SQLFILE_PATH], _
 			['-t', '--time', $POLL_TIME_MS], _
 			['-s', '--screenshots', 1], _
 			['-i', '--init', True], _
-			['-c', '--checksupervisor', 1], _
+			['-c', '--checksupervisor', 0], _
 			['-h', '--help', True] _
 			]
 	Local $dFlag = False, $vFlag = False, $tFlag = False, $sFlag = False, $iFlag = False
-	Local $cFlag = False
-	Local $dArg, $tArg, $cArg
+	Local $cFlag = False, $qFlag = False
+	Local $dArg, $tArg, $cArg, $qArg
 	Local $errFlag = False
 	Local $msg = ""
 
@@ -126,7 +128,7 @@ Func _InputInit()
 	If 0 < $GetOpt_Opts[0] Then ; If there are any options...
 		While 1
 			; Get the next option passing a string with valid options.
-			$sOpt = _GetOpt('vdtsich')
+			$sOpt = _GetOpt('vdqtsich')
 			If Not $sOpt Then ExitLoop
 			Switch $sOpt
 				Case '?' ; Unknown options come here. @extended is set to $E_GETOPT_UNKNOWN_OPTION
@@ -138,6 +140,10 @@ Func _InputInit()
 					$dFlag = True
 					$dArg = $GetOpt_Arg
 					$msg &= "database_path: " & $dArg & " "
+				Case 'q'
+					$qFlag = True
+					$qArg = $GetOpt_Arg
+					$msg &= "sql_path: " & $qArg & " "
 				Case 't'
 					$tFlag = True
 					$tArg = $GetOpt_Arg
@@ -166,6 +172,7 @@ Func _InputInit()
 							' saruman.exe --time -t' & @CRLF & _
 							' saruman.exe --screenshots -s' & @CRLF & _
 							' saruman.exe --database -d' & @CRLF & _
+							' saruman.exe --sql -q' & @CRLF & _
 							' saruman.exe --init -i' & @CRLF & _
 							' saruman.exe --checksupervisor -c' & @CRLF & _
 							'Options: ' & @CRLF & _
@@ -173,6 +180,7 @@ Func _InputInit()
 							' --verbose      		Debug log to file' & @CRLF & _
 							' --time=<ms>			Wait time in ms [default: 10000ms]' & @CRLF & _
 							' --database=<path>		SQLite DB path' & @CRLF & _
+							' --sql=<path>		SQL file path' & @CRLF & _
 							' --screenshots=<0|1>	Save screenshots or not' & @CRLF & _
 							' --checksupervisor=<0|1>  Check supervisor gandalf or not' & @CRLF & _
 							' --init=<True>			Initialize DB')
@@ -194,6 +202,11 @@ Func _InputInit()
 			$DBFILE_PATH = $dArg
 			IniWrite($SETTINGS_FILE, "General", "DBFILE_PATH", $DBFILE_PATH)
 		EndIf
+
+		If $qFlag Then
+			$SQLFILE_PATH = $qArg
+		EndIf
+
 		If $vFlag Then $DEBUG = True
 		If $tFlag Then
 			$POLL_TIME_MS = $tArg
@@ -249,6 +262,12 @@ Func _DBInit($reinit = False)
 		If $reinit = False Then
 			_DebugPrint($DBFILE_PATH & " aciliyor..." & @CRLF)
 		EndIf
+		; db create icin sql file kontrol
+		If Not FileExists($SQLFILE_PATH) Then
+			_DebugPrint($SQLFILE_PATH & " sql dosyasi bulunamadi!")
+		Exit 1
+	EndIf
+
 		$hDB = _SQLite_Open($DBFILE_PATH)
 		If @error Then Exit MsgBox(16, "SQLite Hata", "Veri tabanı açılamadı!")
 	Else
@@ -258,34 +277,53 @@ Func _DBInit($reinit = False)
 	Return $hDB
 EndFunc   ;==>_DBInit
 
+; parse sql file and return sql statements
+Func parseSQLFile($sFilePath)
+	Local $fp = FileOpen($sFilePath, 0)
+	Local $sBuf = ""
+	Local $j = 0
+	Local $N = _FileCountLines($sFilePath)
+	Local $aSql[$N]
+	For $i = 1 To $N
+		$line = FileReadLine($fp, $i)
+		$line = StringReplace($line, @TAB, " ")
+		If StringRight($line, 1) = ";" And $i = $j + 1 Then
+			$aSql[$j] = $line
+			$j = $j + 1
+		ElseIf StringRight($line, 1) = ";" And $sBuf <> "" Then
+			$aSql[$j] = $sBuf & " " & $line
+			$j = $j + 1
+			$sBuf = ""
+		Else
+			If $sBuf = "" Then
+				$sBuf = $line
+			Else
+				$sBuf &= $line
+			EndIf
+		EndIf
+	Next
+
+	FileClose($fp)
+
+	For $i = UBound($aSql) - 1 To 0 Step -1
+		If $aSql[$i] = "" Then
+			_ArrayDelete($aSql, $i)
+		EndIf
+	Next
+
+	Return $aSql
+EndFunc   ;==>parseSQLFile
+
 ; DB Tablo Init
 Func _DBCreate()
 	; Yeni tablo olustur Process
 	_DebugPrint($DBFILE_PATH & " db dosyasi olusturuluyor...")
-	_SQLite_Exec(-1, "CREATE TABLE IF NOT EXISTS User(id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(id));")
-	_SQLite_Exec(-1, "CREATE TABLE IF NOT EXISTS Process(id INTEGER NOT NULL, name TEXT NOT NULL UNIQUE, PRIMARY KEY(id));")
-	_SQLite_Exec(-1, "CREATE TABLE Window (id	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " & _
-			"title	TEXT NOT NULL UNIQUE, handle TEXT, p_id INTEGER NOT NULL, " & _
-			"FOREIGN KEY(p_id) REFERENCES Process(id));")
-	_SQLite_Exec(-1, "CREATE TABLE IF NOT EXISTS Worklog ( " & _
-			"id	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " & _
-			"p_id	INTEGER NOT NULL, " & _
-			"pid	INTEGER NOT NULL DEFAULT 0," & _
-			"u_id	INTEGER NOT NULL, " & _
-			"w_id 	INTEGER DEFAULT 0, " & _
-			"start_date TEXT NOT NULL, " & _
-			"end_date TEXT NOT NULL," & _
-			"idle	INTEGER DEFAULT 0, " & _
-			"processed	INTEGER DEFAULT 0," & _
-			"dns_processed	INTEGER DEFAULT 0," & _
-			"FOREIGN KEY(p_id) REFERENCES Process(id), " & _
-			"FOREIGN KEY(u_id) REFERENCES User(id), " & _
-			"FOREIGN KEY(w_id) REFERENCES Window(id));")
-	_SQLite_Exec(-1, "CREATE TABLE DNSClient ( " & _
-			"pid	INTEGER NOT NULL DEFAULT 0, " & _
-			"query_name	TEXT, " & _
-			"parent_pid	INTEGER," & _
-			"time_created	TEXT );")
+
+	Local $aSql = parseSQLFile($SQLFILE_PATH)
+	For $i = 0 To UBound($aSql) - 1
+		_SQLite_Exec(-1, $aSql[$i])
+	Next
+
 	; idle veri ekleme
 	_SQLite_Exec(-1, "INSERT INTO Process(id, name) VALUES (1,'idle');")
 	_SQLite_Exec(-1, "INSERT INTO Window(id, title, handle, p_id) VALUES (" & $IDLE_W_ID & ", " & _
