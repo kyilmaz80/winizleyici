@@ -17,16 +17,16 @@
 #include <GetOpt.au3> ; UDF v1.3
 
 ; author: korayy
-; date:   200330
+; date:   200401
 ; desc:   work logger
-; version: 1.34
+; version: 1.35
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.34.0.6
+#AutoIt3Wrapper_Res_Fileversion=1.35.0.5
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.34
+#AutoIt3Wrapper_Res_ProductVersion=1.35
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -52,7 +52,8 @@ Global $IS_SCREEN_CAP = False
 Global Const $TRAY_ICON_NAME = "saruman.ico"
 ; debug settings
 Global $DEBUG = False
-Global Const $DEBUG_LOGFILE = @ScriptDir & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
+Global $DEBUG_LOGPATH = @ScriptDir
+Global $DEBUG_LOGFILE = $DEBUG_LOGPATH & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
 ; supervisor and saruman process settings
 Global Const $SUPERVISOR_EXE_NAME = "gandalf.exe"
 Global Const $SARUMAN_EXE_NAME = "saruman.exe"
@@ -77,8 +78,8 @@ Global Const $BUSY_WAIT_MSECS = 500
 
 ; ana program
 Func _Main()
-	saruman_exit()
 	_InputInit()
+	saruman_exit()
 	_DebugPrint("Registering _CaptureWindow() for " & $POLL_TIME_MS & " ms" & @CRLF)
 	AdlibRegister("_CaptureWindows", $POLL_TIME_MS)
 	; thread-like fonksiyonları calistir
@@ -101,17 +102,20 @@ Func _InputInit()
 	If 0 = $CmdLine[0] Then
 		Return
 	EndIf
-	_DebugPrint("Parsing the command line options...")
+
 	If FileExists($SETTINGS_FILE) Then
-		_DebugPrint($SETTINGS_FILE & " ini read ..." & @CRLF)
 		$DBFILE_PATH = IniRead($SETTINGS_FILE, "General", "DBFILE_PATH", $DBFILE_PATH)
 		$POLL_TIME_MS = IniRead($SETTINGS_FILE, "General", "POLL_TIME_MS", $POLL_TIME_MS)
+		$DEBUG_LOGPATH =  IniRead($SETTINGS_FILE, "General", "DEBUG_LOGPATH", $DEBUG_LOGPATH)
+		$DEBUG_LOGFILE = $DEBUG_LOGPATH & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
+		_DebugPrint($SETTINGS_FILE & " ini read ..." & @CRLF)
 	EndIf
 
-	Local $aOpts[8][3] = [ _
+	Local $aOpts[9][3] = [ _
 			['-v', '--verbose', True], _
 			['-d', '--database', $DBFILE_PATH], _
 			['-q', '--sql', $SQLFILE_PATH], _
+			['-l', '--logpath', $DEBUG_LOGPATH], _
 			['-t', '--time', $POLL_TIME_MS], _
 			['-s', '--screenshots', 1], _
 			['-i', '--init', True], _
@@ -119,8 +123,8 @@ Func _InputInit()
 			['-h', '--help', True] _
 			]
 	Local $dFlag = False, $vFlag = False, $tFlag = False, $sFlag = False, $iFlag = False
-	Local $cFlag = False, $qFlag = False
-	Local $dArg, $tArg, $cArg, $qArg
+	Local $cFlag = False, $qFlag = False, $lFlag = False
+	Local $dArg, $tArg, $cArg, $qArg, $lArg
 	Local $errFlag = False
 	Local $msg = ""
 
@@ -128,7 +132,7 @@ Func _InputInit()
 	If 0 < $GetOpt_Opts[0] Then ; If there are any options...
 		While 1
 			; Get the next option passing a string with valid options.
-			$sOpt = _GetOpt('vdqtsich')
+			$sOpt = _GetOpt('vdqltsich')
 			If Not $sOpt Then ExitLoop
 			Switch $sOpt
 				Case '?' ; Unknown options come here. @extended is set to $E_GETOPT_UNKNOWN_OPTION
@@ -144,6 +148,10 @@ Func _InputInit()
 					$qFlag = True
 					$qArg = $GetOpt_Arg
 					$msg &= "sql_path: " & $qArg & " "
+				Case 'l'
+					$lFlag = True
+					$lArg = $GetOpt_Arg
+					$msg &= "log_path: " & $lArg & " "
 				Case 't'
 					$tFlag = True
 					$tArg = $GetOpt_Arg
@@ -173,6 +181,7 @@ Func _InputInit()
 							' saruman.exe --screenshots -s' & @CRLF & _
 							' saruman.exe --database -d' & @CRLF & _
 							' saruman.exe --sql -q' & @CRLF & _
+							' saruman.exe --logpath -l' & @CRLF & _
 							' saruman.exe --init -i' & @CRLF & _
 							' saruman.exe --checksupervisor -c' & @CRLF & _
 							'Options: ' & @CRLF & _
@@ -181,6 +190,7 @@ Func _InputInit()
 							' --time=<ms>			Wait time in ms [default: 10000ms]' & @CRLF & _
 							' --database=<path>		SQLite DB path' & @CRLF & _
 							' --sql=<path>		SQL file path' & @CRLF & _
+							' --logpath=<path>		log file path' & @CRLF & _
 							' --screenshots=<0|1>	Save screenshots or not' & @CRLF & _
 							' --checksupervisor=<0|1>  Check supervisor gandalf or not' & @CRLF & _
 							' --init=<True>			Initialize DB')
@@ -203,6 +213,12 @@ Func _InputInit()
 			IniWrite($SETTINGS_FILE, "General", "DBFILE_PATH", $DBFILE_PATH)
 		EndIf
 
+		If $lFlag Then
+			$DEBUG_LOGPATH = $lArg
+			$DEBUG_LOGFILE = $DEBUG_LOGPATH & "\saruman_" & @MON & @MDAY & @YEAR & "_" & @HOUR & @MIN & @SEC & ".txt"
+			IniWrite($SETTINGS_FILE, "General", "DEBUG_LOGPATH", $DEBUG_LOGPATH)
+		EndIf
+
 		If $qFlag Then
 			$SQLFILE_PATH = $qArg
 		EndIf
@@ -212,6 +228,7 @@ Func _InputInit()
 			$POLL_TIME_MS = $tArg
 			IniWrite($SETTINGS_FILE, "General", "POLL_TIME_MS", $POLL_TIME_MS)
 		EndIf
+
 		If $cFlag Then
 			If $cArg = 1 Then
 				$bCheckSupervisor = True
@@ -219,12 +236,15 @@ Func _InputInit()
 				$bCheckSupervisor = False
 			EndIf
 		EndIf
+
 		If $sFlag Then $IS_SCREEN_CAP = True
+
 		If $iFlag Then
 			_DBInit($iFlag)
 			_DBCreate()
 			Exit
 		EndIf
+		_DebugPrint("Parsed the command line options...")
 		_DebugPrint("Given options: " & $msg)
 	EndIf
 EndFunc   ;==>_InputInit
