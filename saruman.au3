@@ -17,16 +17,16 @@
 #include <GetOpt.au3> ; UDF v1.3
 
 ; author: korayy
-; date:   200401
+; date:   200402
 ; desc:   work logger
-; version: 1.35
+; version: 1.36
 
 #Region ;**** Directives ****
 #AutoIt3Wrapper_Res_ProductName=WinIzleyici
 #AutoIt3Wrapper_Res_Description=User Behaviour Logger
-#AutoIt3Wrapper_Res_Fileversion=1.35.0.5
+#AutoIt3Wrapper_Res_Fileversion=1.36.0.1
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=p
-#AutoIt3Wrapper_Res_ProductVersion=1.35
+#AutoIt3Wrapper_Res_ProductVersion=1.36
 #AutoIt3Wrapper_Res_LegalCopyright=ARYASOFT
 #AutoIt3Wrapper_Res_Icon_Add=.\saruman.ico,99
 #AutoIt3Wrapper_Icon=".\saruman.ico"
@@ -413,24 +413,6 @@ Func _GetDatetime($bTimestamp = False)
 	Return $timedate
 EndFunc   ;==>_GetDatetime
 
-; verilen pencereler winList listesinde aktif pencere durumu doner
-Func isWindowsActive($aList)
-	Local $sArray = StringSplit($BLACK_LIST_WINS, "|", $STR_ENTIRESPLIT)
-	Local $bActive = False
-	For $i = 1 To $aList[0][0]
-		If _ArraySearch($sArray, $aList[$i][0]) <> -1 Then
-			ContinueLoop
-		EndIf
-		If $aList[$i][0] <> "" And BitAND(WinGetState($aList[$i][1]), $WIN_STATE_ACTIVE) Then
-			_DebugPrint("Active WinTitle: " & $aList[$i][0])
-			_DebugPrint("Active WinHandle: " & $aList[$i][1])
-			$bActive = True
-			ExitLoop
-		EndIf
-	Next
-	Return $bActive
-EndFunc   ;==>isWindowsActive
-
 ;~ verilen pencerenin ekran görüntüsünü yakalar
 Func ScreenCaptureWin($winHandle, $fileCapturePath)
 	If Not $IS_SCREEN_CAP Then
@@ -451,34 +433,27 @@ Func ScreenCaptureWin($winHandle, $fileCapturePath)
 	_GDIPlus_Shutdown()
 EndFunc   ;==>ScreenCaptureWin
 
-Func idleToLog($window_id = $IDLE_W_ID, $process_id = $IDLE_PROCESS_ID, $pid = $IDLE_PID, _
-		$activeWinHnd = $IDLE_WIN_HANDLE, $tStart = _GetDatetime())
-	Local $hQuery
+Func idleToLog()
+	Local $hQuery, $idleStart
 	Local $aRow
 	Local $tFinish
 	; init
 	Local $iRes_id = -1, $iRes_w_id = -1, $iRes_idle = -1
 	Local $b
-	Local $cnt
 
-	_DebugPrint($tStart & " Idle mode....")
+	$idleStart = _GetDatetime()
+	_DebugPrint($idleStart & " Idle mode....")
 
-	$cnt = _DB_GetWorklogCount()
-
-	If $cnt = 0 Then
-		_DebugPrint("worklog count =0")
-		Return
-	EndIf
 	$idle = _DB_GetLastWorklogIdle()
 	If $idle = 0 Then
-		$tFinish = $tStart
-		$b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $pid, $activeWinHnd, $tStart, $tFinish, "changed", 1)
+		$tFinish = $idleStart
+		$b = _DB_InsertOrUpdateWorklog($IDLE_W_ID, $IDLE_PROCESS_ID, $IDLE_PID, $IDLE_WIN_HANDLE, $idleStart, $tFinish, "changed", 1)
 	Else
 		$tFinish = _GetDatetime()
-		$b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $pid, $activeWinHnd, $tStart, $tFinish, "same", 1)
+		$b = _DB_InsertOrUpdateWorklog($IDLE_W_ID, $IDLE_PROCESS_ID, $IDLE_PID, $IDLE_WIN_HANDLE, $idleStart, $tFinish, "same", 1)
 	EndIf
 
-	If $b = False Then
+	If $b == False Then
 		_DebugPrint("_DB_InsertOrUpdateWorklog idleToLog hata!")
 	EndIf
 
@@ -614,10 +589,10 @@ Func _DB_InsertWorklog($processID, $pid, $windowID, $start_date, $end_date, $idl
 	Return $d
 EndFunc   ;==>_DB_InsertWorklog
 
-; Worklog tablosundaki kaydı günceller ve sql exec sonucu durumunu doner
-Func _DB_UpdateWorklog($tFinish, $worklogID, $idle = 0)
+; Worklog tablosundaki kaydi günceller ve sql exec sonucu durumunu doner
+Func _DB_UpdateWorklog($tFinish, $worklogID)
 	Local $d = _SQLite_Exec(-1, "UPDATE main.Worklog SET end_date=" & _SQLite_FastEscape($tFinish) & _
-			", idle=" & $idle & " WHERE id=" & $worklogID)
+			" WHERE id=" & $worklogID)
 	Return $d
 EndFunc   ;==>_DB_UpdateWorklog
 
@@ -654,7 +629,7 @@ Func _DB_InsertOrUpdateWorklog($window_id, $process_id, $pid, $activeWinHnd, $tS
 	Else
 		Local $last_worklog_id = _DB_GetLastWorklogID()
 		_DebugPrint("Normalizing last " & $sChangedOrSame & " insert with update..." & $activeWinHnd & @CRLF)
-		$d = _DB_UpdateWorklog($tFinish, $last_worklog_id, $idle)
+		$d = _DB_UpdateWorklog($tFinish, $last_worklog_id)
 		If $d <> $SQLITE_OK And $d <> $SQLITE_CONSTRAINT Then
 			_DebugPrint("SQL Update Hatasi: @_DB_UpdateWorklog  SQLITE hata kodu: " & $d)
 			Return False
@@ -662,46 +637,6 @@ Func _DB_InsertOrUpdateWorklog($window_id, $process_id, $pid, $activeWinHnd, $tS
 	EndIf
 	Return True
 EndFunc   ;==>_DB_InsertOrUpdateWorklog
-
-;~ mouse durumu yerini set eder
-Func setLastMousePos()
-	$aLastMousePos = MouseGetPos()
-	Local $strPos = $aLastMousePos[0] & "," & $aLastMousePos[1] ; (x,y) coord
-	Local $t = _GetDatetime(True)
-	_DebugPrint("Mouse position timestamp: " & $t & ", pos: " & $strPos)
-	If $oMousePositionsDict.Exists($t) Then
-		$oMousePositionsDict.Item($t) = $strPos
-	Else
-		$oMousePositionsDict.Add($t, $strPos)
-	EndIf
-
-	; _ArrayAdd($aMousePositions, $aLastMousePos[0] & "," & $aLastMousePos[1] & ";" & $t, 0, ";")
-	If @error Then _DebugPrint("array add failure at setLastMousePos()")
-EndFunc   ;==>setLastMousePos
-
-; mouse hareketine bakıp idle durumu olup olmadigina bakar
-Func getMouseIdleState()
-	Local $lastTimestamp
-	Local $bMouseIdle = False
-
-	If $oMousePositionsDict.Count < 0 Then
-		Return
-	EndIf
-
-	$lastTimestamp = $oMousePositionsDict.Keys[$oMousePositionsDict.Count - 1]
-	$beforeTimestamp = $lastTimestamp - $IDLE_TIMEOUT_SECS
-	If $oMousePositionsDict.Exists($beforeTimestamp) Then
-		_DebugPrint("Pos of mouse at " & $beforeTimestamp & " : " & $oMousePositionsDict.Item($beforeTimestamp) & @CRLF)
-		If $oMousePositionsDict.Item($beforeTimestamp) <> $oMousePositionsDict.Item($lastTimestamp) Then
-			_DebugPrint("mouse pos different before " & $beforeTimestamp & " secs => not idle" & @CRLF)
-		Else
-			_DebugPrint("mouse pos same before " & $beforeTimestamp & " secs => idle")
-			$bMouseIdle = True
-		EndIf
-		Return $bMouseIdle
-	EndIf
-
-EndFunc   ;==>getMouseIdleState
 
 ;~ aktif pencere yakalayici ana program - periyodik olarak pencere davranislarini yakalar
 Func _CaptureWindows()
@@ -765,11 +700,6 @@ Func _CaptureWindows()
 
 		$tLastFinish = $tStart
 
-		; mouse durum
-		If $MOUSE_TRACK Then
-			setLastMousePos()
-		EndIf
-
 		; screen capture
 		If $IS_SCREEN_CAP Then
 			$screenShotFilePath = $SCREENSHOT_PATH & "\" & StringRegExpReplace($tStart, "[-:\h]", "") & ".jpg"
@@ -791,11 +721,6 @@ Func _CaptureWindows()
 		;If $bWindowSame <> True Then
 		$tStart = $tLastFinish
 		;EndIf
-
-		; mouse durum
-		If $MOUSE_TRACK Then
-			setLastMousePos()
-		EndIf
 
 		; screen capture
 		If $IS_SCREEN_CAP Then
@@ -819,25 +744,6 @@ Func _CaptureWindows()
 		$tStart = $tLastFinish
 
 		$window_id = _DB_GetLastWindowID($sCurrentActiveWin)
-
-		; mouse durum
-		If $MOUSE_TRACK Then
-			setLastMousePos()
-			Local $ret = getMouseIdleState()
-			Local $lastIdle = _DB_GetLastWorklogIdle()
-			If $lastIdle = -1 Then
-				_DebugPrint("No data on worklog!")
-			EndIf
-			If $ret Then
-				; TODO: bir önceki pencerenin bitişi bu pencerenin başlangıcı?
-				idleToLog($window_id, $process_id, $iPID, $activeWinHnd, $tFinish2)
-				$tLastFinish = $tFinish2
-				Return
-			ElseIf $ret = False And $lastIdle = 1 Then
-				_DebugPrint("lastIdle = 1 oldugundan _DB_InsertOrUpdateWorklog es geciliyor...")
-				Return
-			EndIf
-		EndIf
 
 		Local $b = _DB_InsertOrUpdateWorklog($window_id, $process_id, $iPID, $activeWinHnd, $tStart, $tFinish2, "same", 0)
 		If $b = False Then
